@@ -172,9 +172,10 @@ function render(){
     shown++;
     const rows=m.grid.map(g=>{
       const t1 = t && teaFull(g.p1)===t, t2 = t && teaFull(g.p2)===t;
-      // при выбранном преподавателе оставляем только строки с его парами
-      if(t && !t1 && !t2) return "";
       const hl1 = dc && discKey(g.p1)===dc, hl2 = dc && discKey(g.p2)===dc;
+      // оставляем только строки, где есть пара выбранного преподавателя / дисциплины
+      if(t && !t1 && !t2) return "";
+      if(dc && !hl1 && !hl2) return "";
       // приглушаем ячейку, если активен фильтр и пара ему не соответствует
       const dim1 = ((t && !t1) || (dc && !hl1)) ? ' style="opacity:.32"' : '';
       const dim2 = ((t && !t2) || (dc && !hl2)) ? ' style="opacity:.32"' : '';
