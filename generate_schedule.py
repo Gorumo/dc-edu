@@ -45,6 +45,8 @@ PEOPLE = {
     "Колцун":     {"full": "Колцун Никита Валерьевич",           "tg": "KoltsNik"},
     "Акопян":     {"full": "Акопян Анжела Артаковна",            "tg": "nglicae"},
     "Носань":     {"full": "Носань Марк",                        "tg": "doyouseemegod"},
+    "Романов":    {"full": "Романов Алексей Андреевич",          "tg": "gorumo"},
+    "Волчек":     {"full": "Волчек Дмитрий Геннадьевич",         "tg": "dvolchek"},
 }
 
 # ---------------------------------------------------------------------------
@@ -88,6 +90,11 @@ TEACHERS = {
     "КультИИ: КЗ (Мод 4) ON 1.2": "Акопян",
     "КультИИ: АД (Мод 4) ON 1.3": "Акопян",
     "КультИИ: МиК (Мод 4) ON 1.2": "Акопян",
+    # Романов
+    "КультИИ: МиК (Мод 2) 1.1": "Романов",
+    # Волчек
+    "КультИИ: КЗ (Мод 3) 1.1": "Волчек",
+    "КультИИ: МиК (Мод 3) 1.1": "Волчек",
 }
 
 # Правило-шаблон: всё, что подходит под подстроку (ключ), уходит к этому преподавателю,
@@ -200,6 +207,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   table{width:100%;border-collapse:collapse;font-size:12.5px}
   th,td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
   th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#15181f}
+  tr.grp td{background:#15181f;color:var(--accent);font-weight:600;font-size:11.5px}
   td.time{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px}
   td.time b{display:block;color:var(--txt);font-size:13px}
   .cell{display:flex;align-items:flex-start;gap:7px}
@@ -231,10 +239,10 @@ TEMPLATE = r"""<!DOCTYPE html>
   <div class="sub">2026–2027 · переключайте «Магистратуру» и «Бакалавриат» в фильтре «Программа»</div>
   <div class="controls">
     <div class="ctl"><label>Программа</label><select id="fLevel"></select></div>
-    <div class="ctl"><label>День недели</label><select id="fDay"></select></div>
-    <div class="ctl"><label>Площадка</label><select id="fVenue"></select></div>
-    <div class="ctl"><label id="lblTeach">Преподаватель</label><select id="fTeach"></select></div>
-    <div class="ctl"><label id="lblDisc">Дисциплина</label><select id="fDisc"></select></div>
+    <div class="ctl" id="ctlDay"><label>День недели</label><select id="fDay"></select></div>
+    <div class="ctl" id="ctlVenue"><label>Площадка</label><select id="fVenue"></select></div>
+    <div class="ctl" id="ctlTeach"><label id="lblTeach">Преподаватель</label><select id="fTeach"></select></div>
+    <div class="ctl" id="ctlDisc"><label id="lblDisc">Дисциплина</label><select id="fDisc"></select></div>
     <span class="count" id="count"></span>
   </div>
   <div class="legend" id="legend">
@@ -323,7 +331,16 @@ function fill(sel,vals,allLabel){
 }
 
 const DISCS=[["КЗ","КультИИ КЗ"],["АД","КультИИ АД"],["МиК","КультИИ МиК"],["НиТ","ИИ Прод"],["AI","AI Culture"]];
+function showCtl(el,on){el.style.display=on?"":"none";}
 function setupFilters(){
+  if(MODE==="load"){
+    lblTeach.textContent="Преподаватель";
+    fill(fTeach,Object.keys(buildLoad()).sort((a,b)=>a.localeCompare(b,"ru")),"Все преподаватели");
+    showCtl(ctlDay,false); showCtl(ctlVenue,false); showCtl(ctlDisc,false); showCtl(ctlTeach,true);
+    legend.style.display="none";
+    return;
+  }
+  showCtl(ctlDay,true); showCtl(ctlVenue,true); showCtl(ctlDisc,true); showCtl(ctlTeach,true);
   const data = MODE==="bach" ? BACH_DATA : DATA;
   fill(fDay,uniq(data.map(m=>m.day)),"Все дни");
   fill(fVenue,uniq(data.map(m=>m.venue)),"Все площадки");
@@ -341,7 +358,85 @@ function setupFilters(){
   }
 }
 fLevel.innerHTML='<option value="mag">Магистратура</option>'+
-  (BACH_DATA.length?'<option value="bach">Бакалавриат</option>':'');
+  (BACH_DATA.length?'<option value="bach">Бакалавриат</option>':'')+
+  '<option value="load">Нагрузка</option>';
+
+// --- НАГРУЗКА: пары в разрезе преподавателей (магистратура + бакалавриат) ---
+const DAY_ORD={"ВТОРНИК":0,"ПЯТНИЦА":1,"ПОНЕДЕЛЬНИК":2,"СРЕДА":3,"ЧЕТВЕРГ":4,"СУББОТА":5};
+function buildLoad(){
+  const T={};
+  function add(name,tg,s){
+    if(!name) return;
+    if(!T[name]) T[name]={tg:"",sessions:[]};
+    if(tg && !T[name].tg) T[name].tg=tg;
+    T[name].sessions.push(s);
+  }
+  DATA.forEach((m,mi)=>m.grid.forEach(g=>{
+    [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
+      const s=g[key]; if(!s) return;
+      const k=teachKey(s); if(!k) return; const p=PEOPLE[k];
+      add(p.full,p.tg,{ord:100+mi,group:`Магистратура · ${m.name} · ${m.day} ${m.date}`,
+        time:g.time,title:prettyName(s),place:`${m.venue} · ауд. ${aud}`});
+    });
+  }));
+  BACH_DATA.forEach(m=>{
+    const ord=(m.parity==="Нечётная"?0:1)*2+(DAY_ORD[m.day]||0);
+    m.grid.forEach(g=>{
+      [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
+        streamsIn(g[key]).forEach(sid=>{
+          const st=STREAMS[sid]; if(!st||!st.tname) return;
+          add(st.tname,st.ttg,{ord:ord,
+            group:`Бакалавриат · ${m.day} · ${m.parity} неделя${m.wave?" · "+m.wave:""}`,
+            time:g.time,title:shortStream(sid),place:`${m.venue} · ауд. ${aud}`});
+        });
+      });
+    });
+  });
+  // склеенные потоки (одна пара в одном слоте) объединяем, чтобы не задваивать счёт
+  Object.values(T).forEach(info=>{
+    const map={}, merged=[];
+    info.sessions.forEach(s=>{
+      const k=s.ord+"|"+s.time+"|"+s.place;
+      if(map[k]) map[k].title+=", "+s.title;
+      else { map[k]={...s}; merged.push(map[k]); }
+    });
+    info.sessions=merged;
+  });
+  return T;
+}
+function renderLoad(){
+  const t=fTeach.value;
+  const grid=document.getElementById("grid"); grid.innerHTML="";
+  const load=buildLoad();
+  const names=(t?[t]:Object.keys(load)).filter(n=>load[n]).sort((a,b)=>a.localeCompare(b,"ru"));
+  let shown=0;
+  names.forEach(name=>{
+    const info=load[name]; shown++;
+    const sess=info.sessions.slice().sort((a,b)=>a.ord-b.ord || (parseInt(a.time)-parseInt(b.time)));
+    const groups=[], idx={};
+    sess.forEach(s=>{ if(idx[s.group]===undefined){idx[s.group]=groups.length;groups.push({label:s.group,items:[]});}
+      groups[idx[s.group]].items.push(s); });
+    const rows=groups.map(gr=>
+      `<tr class="grp"><td colspan="3">${gr.label} — ${gr.items.length} пар.</td></tr>`+
+      gr.items.map(s=>{const tt=s.time.split(" · ");
+        return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td><td>${s.title}</td><td>${s.place}</td></tr>`;
+      }).join("")
+    ).join("");
+    const tg=info.tg?`<span class="chip fmt"><a href="https://t.me/${info.tg}" target="_blank" style="color:inherit;text-decoration:none">@${info.tg}</a></span>`:"";
+    grid.insertAdjacentHTML("beforeend",`
+      <div class="mod">
+        <div class="mhead">
+          <div class="mtop"><span class="mname">${name}</span><span class="mday">всего пар: ${info.sessions.length}</span></div>
+          <div class="mmeta">${tg}</div>
+        </div>
+        <table>
+          <thead><tr><th>Время</th><th>Пара</th><th>Где</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`);
+  });
+  document.getElementById("count").textContent = t?`Преподаватель: ${shown}`:`Преподавателей: ${shown}`;
+}
 setupFilters();
 
 // --- БАКАЛАВРИАТ: ячейка = поток(и); клик показывает ОП и детали ---
@@ -413,7 +508,10 @@ function renderBach(){
 }
 
 function teaFull(s){const k=teachKey(s);return k?PEOPLE[k].full:null;}
-function render(){ return MODE==="bach" ? renderBach() : renderMag(); }
+function render(){
+  if(MODE==="load") return renderLoad();
+  return MODE==="bach" ? renderBach() : renderMag();
+}
 function renderMag(){
   const d=fDay.value,v=fVenue.value,t=fTeach.value,dc=fDisc.value;
   const grid=document.getElementById("grid");
