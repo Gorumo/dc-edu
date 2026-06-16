@@ -43,6 +43,7 @@
   th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#15181f}
   tr.grp td{background:#15181f;color:var(--accent);font-weight:600;font-size:11.5px}
   tr.mrow td{background:#0c0e12;color:var(--txt);font-weight:700;font-size:12.5px;letter-spacing:.05em;text-transform:uppercase}
+  tr.drow td{background:#191c24;color:var(--muted);font-weight:600;font-size:11px;padding-left:18px}
   .mod.load{grid-column:1/-1}
   td.time{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px}
   td.time b{display:block;color:var(--txt);font-size:13px}
@@ -218,6 +219,7 @@ fLevel.innerHTML='<option value="mag">Магистратура</option>'+
 // --- НАГРУЗКА: реальная нагрузка преподавателя по неделям семестра ---
 const DAY_ORD={"ВТОРНИК":0,"ПЯТНИЦА":1,"ПОНЕДЕЛЬНИК":2,"СРЕДА":3,"ЧЕТВЕРГ":4,"СУББОТА":5};
 const DAY_ABBR={"ПОНЕДЕЛЬНИК":"ПН","ВТОРНИК":"ВТ","СРЕДА":"СР","ЧЕТВЕРГ":"ЧТ","ПЯТНИЦА":"ПТ","СУББОТА":"СБ"};
+const DAY_NICE={"ПОНЕДЕЛЬНИК":"Понедельник","ВТОРНИК":"Вторник","СРЕДА":"Среда","ЧЕТВЕРГ":"Четверг","ПЯТНИЦА":"Пятница","СУББОТА":"Суббота"};
 const RU_MONTH_NOM=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 function buildLoad(){
   const T={};
@@ -290,15 +292,18 @@ function renderLoad(){
     const byWeek={}; occ.forEach(o=>byWeek[o.week]=(byWeek[o.week]||0)+1);
     const nWeeks=Object.keys(byWeek).length;
     const avg=nWeeks?(total/nWeeks):0, maxW=nWeeks?Math.max(...Object.values(byWeek)):0;
-    let body="", curMonth=-1, curWeek=-1;
+    let body="", curMonth=-1, curWeek=-1, curDay="";
     occ.forEach(o=>{
       const mo=weekMonth(o.week);
-      if(mo!==curMonth){ curMonth=mo; curWeek=-1;
+      if(mo!==curMonth){ curMonth=mo; curWeek=-1; curDay="";
         body+=`<tr class="mrow"><td colspan="3">${RU_MONTH_NOM[mo]}</td></tr>`; }
-      if(o.week!==curWeek){ curWeek=o.week;
+      if(o.week!==curWeek){ curWeek=o.week; curDay="";
         body+=`<tr class="grp"><td colspan="3">Неделя ${o.week} · ${parityRu(o.week)} · ${weekRange(o.week)} — ${byWeek[o.week]} пар.</td></tr>`; }
+      if(o.day!==curDay){ curDay=o.day;
+        const cd=occ.filter(x=>x.week===o.week && x.day===o.day).length;
+        body+=`<tr class="drow"><td colspan="3">${DAY_NICE[o.day]||o.day} · ${fmtDate(weekDate(o.week,o.day))} — ${cd} пар.</td></tr>`; }
       const tt=o.time.split(" · ");
-      body+=`<tr><td class="time">${DAY_ABBR[o.day]||o.day} <b>${tt[1]||tt[0]}</b></td><td>${o.title}</td><td>${o.place}</td></tr>`;
+      body+=`<tr><td class="time"><b>${tt[1]||tt[0]}</b></td><td>${o.title}</td><td>${o.place}</td></tr>`;
     });
     const tg=info.tg?`<span class="chip fmt"><a href="https://t.me/${info.tg}" target="_blank" style="color:inherit;text-decoration:none">@${info.tg}</a></span>`:"";
     grid.insertAdjacentHTML("beforeend",`
@@ -308,7 +313,7 @@ function renderLoad(){
           <div class="mmeta">${tg}<span class="chip">недель с парами: ${nWeeks}</span><span class="chip">~${avg.toFixed(1)} пар/нед</span><span class="chip">пик: ${maxW}/нед</span></div>
         </div>
         <table>
-          <thead><tr><th>Когда</th><th>Пара</th><th>Где</th></tr></thead>
+          <thead><tr><th>Время</th><th>Пара</th><th>Где</th></tr></thead>
           <tbody>${body||'<tr><td colspan="3" class="empty">— нет нагрузки —</td></tr>'}</tbody>
         </table>
       </div>`);
