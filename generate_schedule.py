@@ -204,6 +204,8 @@ TEMPLATE = r"""<!DOCTYPE html>
   .ptea.has{color:var(--accent);cursor:pointer;border-bottom:1px dashed rgba(106,160,255,.5);
     display:inline-block;line-height:1.5;outline:none}
   .ptea.has:hover,.ptea.has:focus{color:#9dc0ff}
+  .sname{color:var(--txt);cursor:pointer;border-bottom:1px dashed rgba(154,163,178,.55);outline:none}
+  .sname:hover,.sname:focus{color:#fff}
   #pop{position:fixed;z-index:50;background:var(--card2);border:1px solid var(--accent);
     border-radius:10px;padding:11px 13px;max-width:260px;box-shadow:0 8px 28px rgba(0,0,0,.55);
     font-size:13px;display:none;animation:pf .12s ease}
@@ -339,7 +341,6 @@ const STREAM_RE=/ИвИИ\s+\d+\s+\(ВШ ЦК1\)\s+\S+\s+\d+\.\d+/g;
 function streamsIn(s){return s ? (s.match(STREAM_RE)||[]) : [];}
 function opOf(sid){const x=STREAMS[sid];return x?x.op:null;}
 function shortStream(sid){return sid.replace(/\s*\(ВШ ЦК1\)\s*/," · ");}
-function shortOp(op){return op.replace(/\s*20\d\d$/,"");}
 function bukvaColor(b){
   if(!b) return "var(--muted)";
   let h=0; for(const c of b) h=(h*37+c.charCodeAt(0))%360;
@@ -348,12 +349,21 @@ function bukvaColor(b){
 function cellB(raw){
   const list=streamsIn(raw);
   if(!list.length) return '<span class="empty">—</span>';
-  return list.map(sid=>{
-    const s=STREAMS[sid]||{};
-    return `<span class="cell"><span class="bar" style="background:${bukvaColor(s.bukva)}"></span>`+
-      `<span><span class="ptea has" tabindex="0" data-sid="${sid}">${shortStream(sid)}</span>`+
-      (s.op?`<span class="ptea">${shortOp(s.op)}</span>`:"")+`</span></span>`;
-  }).join('<span style="display:block;height:6px"></span>');
+  const s0=STREAMS[list[0]]||{};
+  // склеенные потоки = одна пара: перечисляем через запятую (ОП — по наведению)
+  const names=list.map(sid=>
+    `<span class="sname" tabindex="0" data-sid="${sid}">${shortStream(sid)}</span>`).join(", ");
+  // преподаватели под названием (уникальные), как в магистратуре
+  const teas=[];
+  list.forEach(sid=>{const t=STREAMS[sid];
+    if(t&&t.tname&&!teas.some(x=>x.tname===t.tname)) teas.push(t);});
+  const teaLine = teas.length
+    ? teas.map(t=>t.ttg
+        ? `<span class="ptea has" tabindex="0" data-tn="${t.tname}" data-tg="${t.ttg}">👤 ${shortName(t.tname)}</span>`
+        : `<span class="ptea">👤 ${shortName(t.tname)}</span>`).join(", ")
+    : '<span class="ptea">👤 не указан</span>';
+  return `<span class="cell"><span class="bar" style="background:${bukvaColor(s0.bukva)}"></span>`+
+    `<span><span class="disc">${names}</span>${teaLine}</span></span>`;
 }
 function renderBach(){
   const d=fDay.value,v=fVenue.value,op=fTeach.value,wk=fDisc.value;
@@ -452,14 +462,14 @@ render();
 
 const pop=document.getElementById("pop");
 function showPop(el){
-  if(el.dataset.sid){
+  if(el.dataset.sid!==undefined){
     const s=STREAMS[el.dataset.sid];
     if(!s) return;
     pop.innerHTML=`<div class="pf">${s.op||el.dataset.sid}</div>`+
-      `<div class="pl">Подразделение: <b>${s.podr||"—"}</b></div>`+
-      `<div class="pl">Буква ${s.bukva||"—"} · КЦП ${s.kcp||"—"} · лимит ${s.limit||"—"}</div>`+
-      (s.teacher?`<div class="pl">Преподаватель: <b>${s.teacher}</b></div>`:"")+
-      `<div class="pl">${[s.day,s.parity,s.venue,s.wave].filter(Boolean).join(" · ")}</div>`;
+      (s.podr?`<div class="pl">Подразделение: <b>${s.podr}</b></div>`:"");
+  } else if(el.dataset.tg!==undefined){
+    pop.innerHTML=`<div class="pf">${el.dataset.tn}</div>`+
+      `<a href="https://t.me/${el.dataset.tg}" target="_blank">@${el.dataset.tg}</a>`;
   } else {
     const p=PEOPLE[el.dataset.tk];
     if(!p) return;
@@ -475,16 +485,17 @@ function showPop(el){
   pop.style.top=Math.max(10,top)+"px";
 }
 function hidePop(){pop.style.display="none";}
-document.addEventListener("mouseover",e=>{const el=e.target.closest(".ptea.has");if(el)showPop(el);});
+const POP_SEL=".ptea.has,.sname";
+document.addEventListener("mouseover",e=>{const el=e.target.closest(POP_SEL);if(el)showPop(el);});
 document.addEventListener("mouseout",e=>{
-  if(e.target.closest(".ptea.has") && !e.relatedTarget?.closest("#pop")) hidePop();
+  if(e.target.closest(POP_SEL) && !e.relatedTarget?.closest("#pop")) hidePop();
 });
 document.addEventListener("click",e=>{
-  const el=e.target.closest(".ptea.has");
+  const el=e.target.closest(POP_SEL);
   if(el){e.stopPropagation();showPop(el);}
   else if(!e.target.closest("#pop")) hidePop();
 });
-document.addEventListener("focusin",e=>{const el=e.target.closest(".ptea.has");if(el)showPop(el);});
+document.addEventListener("focusin",e=>{const el=e.target.closest(POP_SEL);if(el)showPop(el);});
 addEventListener("scroll",hidePop,true);
 </script>
 </body>
@@ -527,19 +538,25 @@ def _g(rows, ri, ci):
     return (rows[ri][ci] if ci < len(rows[ri]) else "").strip()
 
 
+# Преподаватели бакалавриата: id потока -> (ФИО, telegram без @).
+# Заполняется вручную по мере появления данных (в таблице колонка пока пустая).
+BACH_TEACHERS = {
+    "ИвИИ 2 (ВШ ЦК1) U 1.1": ("Иванова Кристина Юрьевна", "unoivansson"),
+    "ИвИИ 2 (ВШ ЦК1) U 1.3": ("Иванова Кристина Юрьевна", "unoivansson"),
+}
+
+
 def parse_streams(rows):
-    """Колонка E (id потока) -> метаданные (ОП и пр.) для всплывающей карточки."""
+    """Колонка E (id потока) -> {ОП, подразделение, буква, преподаватель}."""
     streams = {}
     for ri in range(2, len(rows)):
         sid = _g(rows, ri, 4)
         if not sid or sid == "Поток":
             continue
+        tname, ttg = BACH_TEACHERS.get(sid, (_g(rows, ri, 10), ""))
         streams.setdefault(sid, {
-            "podr": _g(rows, ri, 0), "op": _g(rows, ri, 1),
-            "bukva": _g(rows, ri, 2), "kcp": _g(rows, ri, 3),
-            "limit": _g(rows, ri, 5), "day": _g(rows, ri, 7),
-            "parity": _g(rows, ri, 8), "venue": _g(rows, ri, 9),
-            "teacher": _g(rows, ri, 10), "wave": _g(rows, ri, 11),
+            "op": _g(rows, ri, 1), "podr": _g(rows, ri, 0),
+            "bukva": _g(rows, ri, 2), "tname": tname, "ttg": ttg,
         })
     return streams
 
