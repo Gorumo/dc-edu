@@ -546,18 +546,31 @@ BACH_TEACHERS = {
 }
 
 
+STREAM_ID_RE = re.compile(r"^ИвИИ\s+\d+\s+\(ВШ ЦК1\)\s+\S+\s+\d+\.\d+$")
+
+
 def parse_streams(rows):
-    """Колонка E (id потока) -> {ОП, подразделение, буква, преподаватель}."""
+    """Колонка E (id потока) -> {ОП, подразделение, буква, преподаватель}.
+
+    Берём только реальные потоки (по шаблону id) и разворачиваем объединённые
+    ячейки: в CSV значение объединённой ячейки стоит лишь в первой строке, поэтому
+    пустые ОП/подразделение/буква наследуем от предыдущего потока. На разрыве
+    (строка без потока) наследование сбрасываем.
+    """
     streams = {}
+    last = {"podr": "", "op": "", "bukva": ""}
     for ri in range(2, len(rows)):
         sid = _g(rows, ri, 4)
-        if not sid or sid == "Поток":
+        if not STREAM_ID_RE.match(sid):
+            last = {"podr": "", "op": "", "bukva": ""}
             continue
+        podr = _g(rows, ri, 0) or last["podr"]
+        op = _g(rows, ri, 1) or last["op"]
+        bukva = _g(rows, ri, 2) or last["bukva"]
+        last = {"podr": podr, "op": op, "bukva": bukva}
         tname, ttg = BACH_TEACHERS.get(sid, (_g(rows, ri, 10), ""))
-        streams.setdefault(sid, {
-            "op": _g(rows, ri, 1), "podr": _g(rows, ri, 0),
-            "bukva": _g(rows, ri, 2), "tname": tname, "ttg": ttg,
-        })
+        streams.setdefault(sid, {"op": op, "podr": podr, "bukva": bukva,
+                                 "tname": tname, "ttg": ttg})
     return streams
 
 
