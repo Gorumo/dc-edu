@@ -25,12 +25,16 @@ from pathlib import Path
 
 OUTPUT = "raspisanie.html"
 
-# Источник данных бакалавриата — Google-таблица, вкладка «Потоки».
-SHEET_ID = "1cpllz5oY2lV1VbO_AzLNVkyrn6g9-8SHAuwjLOAgQkM"
-SHEET_GID = "1702931394"
-SHEET_CSV_URL = (f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
-                 f"/export?format=csv&gid={SHEET_GID}")
-CSV_CACHE = "potoki.csv"  # локальная копия на случай, если сеть недоступна
+# Источники данных — Google-таблицы (вкладки «Потоки»), с локальным кэшем на случай,
+# если сеть недоступна.
+def _csv_url(sheet_id, gid):
+    return (f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+            f"/export?format=csv&gid={gid}")
+
+BACH_CSV_URL = _csv_url("1cpllz5oY2lV1VbO_AzLNVkyrn6g9-8SHAuwjLOAgQkM", "1702931394")
+BACH_CACHE = "potoki.csv"
+MAG_CSV_URL = _csv_url("1olj3EdemHiCbQFngPi9d4oWCUctYEZIN75PHwkKP__E", "875729294")
+MAG_CACHE = "potoki_mag.csv"
 
 # ---------------------------------------------------------------------------
 # 1. ПРЕПОДАВАТЕЛИ:  ключ -> полное ФИО + telegram (без @)
@@ -251,6 +255,7 @@ const TEACHERS = __TEACHERS__;
 const TEACHER_RULES = __RULES__;
 const BACH_DATA = __DATA_B__;
 const STREAMS = __STREAMS__;
+const MAG_STREAMS = __MAG_STREAMS__;   // название пары -> подразделение (магистратура)
 let MODE = "mag";   // "mag" — магистратура, "bach" — бакалавриат
 
 function teachKey(s){
@@ -305,8 +310,11 @@ function cell(s){
   const tea = k
     ? `<span class="ptea has" tabindex="0" data-tk="${k}">👤 ${teach(s)}</span>`
     : `<span class="ptea">👤 не указан</span>`;
+  const disc = (s in MAG_STREAMS)
+    ? `<span class="sname" tabindex="0" data-md="${s}">${prettyName(s)}</span>`
+    : `<span class="disc">${prettyName(s)}</span>`;
   return `<span class="cell"><span class="bar" style="background:${discColor(s)}"></span>`+
-    `<span><span class="disc">${prettyName(s)}</span>${tea}</span></span>`;
+    `<span>${disc}${tea}</span></span>`;
 }
 function uniq(arr){return [...new Set(arr.filter(Boolean))];}
 function fill(sel,vals,allLabel){
@@ -462,7 +470,11 @@ render();
 
 const pop=document.getElementById("pop");
 function showPop(el){
-  if(el.dataset.sid!==undefined){
+  if(el.dataset.md!==undefined){
+    const podr=MAG_STREAMS[el.dataset.md];
+    pop.innerHTML=`<div class="pf">${prettyName(el.dataset.md)}</div>`+
+      (podr?`<div class="pl">Подразделение: <b>${podr}</b></div>`:"");
+  } else if(el.dataset.sid!==undefined){
     const s=STREAMS[el.dataset.sid];
     if(!s) return;
     pop.innerHTML=`<div class="pf">${s.op||el.dataset.sid}</div>`+
@@ -514,21 +526,21 @@ _DAYS = {"ПН": "ПОНЕДЕЛЬНИК", "ВТ": "ВТОРНИК", "СР": "С
          "ЧТ": "ЧЕТВЕРГ", "ПТ": "ПЯТНИЦА"}
 
 
-def fetch_potoki_rows():
-    """Скачивает вкладку «Потоки» как CSV; при сбое берёт локальный кэш."""
-    cache = Path(__file__).resolve().parent / CSV_CACHE
+def fetch_csv_rows(url, cache_name, label):
+    """Скачивает CSV-вкладку; при сбое берёт локальный кэш."""
+    cache = Path(__file__).resolve().parent / cache_name
     try:
-        with urllib.request.urlopen(SHEET_CSV_URL, timeout=20) as resp:
+        with urllib.request.urlopen(url, timeout=20) as resp:
             text = resp.read().decode("utf-8")
         cache.write_text(text, encoding="utf-8")
-        print("Бакалавриат: данные загружены из Google Sheets.")
+        print(f"{label}: данные загружены из Google Sheets.")
     except Exception as exc:                       # noqa: BLE001
         if cache.exists():
-            print(f"Бакалавриат: не удалось скачать ({exc}), использую кэш {CSV_CACHE}.",
+            print(f"{label}: не удалось скачать ({exc}), использую кэш {cache_name}.",
                   file=sys.stderr)
             text = cache.read_text(encoding="utf-8")
         else:
-            print(f"Бакалавриат: не удалось скачать ({exc}) и кэша нет — пропускаю.",
+            print(f"{label}: не удалось скачать ({exc}) и кэша нет — пропускаю.",
                   file=sys.stderr)
             return []
     return list(csv.reader(io.StringIO(text)))
@@ -626,23 +638,42 @@ def parse_bachelor(rows):
 
 
 def load_bachelor():
-    rows = fetch_potoki_rows()
+    rows = fetch_csv_rows(BACH_CSV_URL, BACH_CACHE, "Бакалавриат")
     if not rows:
         return [], {}
     return parse_bachelor(rows), parse_streams(rows)
+
+
+def parse_mag_streams(rows):
+    """Колонка E (название пары) -> подразделение (колонка D). Без ОП."""
+    out = {}
+    for ri in range(1, len(rows)):
+        name = _g(rows, ri, 4)
+        podr = _g(rows, ri, 3)
+        if not name or not re.search(r"\((?:Мод|Mod)\s*\d+\)", name):
+            continue
+        out.setdefault(name, podr)
+    return out
+
+
+def load_mag_streams():
+    rows = fetch_csv_rows(MAG_CSV_URL, MAG_CACHE, "Магистратура")
+    return parse_mag_streams(rows) if rows else {}
 
 
 def build_html():
     dump = lambda obj: json.dumps(obj, ensure_ascii=False)
     rules = [[sub, key] for sub, key in TEACHER_RULES]
     data_b, streams = load_bachelor()
+    mag_streams = load_mag_streams()
     return (TEMPLATE
             .replace("__DATA__", dump(DATA))
             .replace("__PEOPLE__", dump(PEOPLE))
             .replace("__TEACHERS__", dump(TEACHERS))
             .replace("__RULES__", dump(rules))
             .replace("__DATA_B__", dump(data_b))
-            .replace("__STREAMS__", dump(streams)))
+            .replace("__STREAMS__", dump(streams))
+            .replace("__MAG_STREAMS__", dump(mag_streams)))
 
 
 def publish():
