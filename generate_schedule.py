@@ -209,12 +209,8 @@ TEMPLATE = r"""<!DOCTYPE html>
   th,td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
   th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#15181f}
   tr.grp td{background:#15181f;color:var(--accent);font-weight:600;font-size:11.5px}
+  tr.mrow td{background:#0c0e12;color:var(--txt);font-weight:700;font-size:12.5px;letter-spacing:.05em;text-transform:uppercase}
   .mod.load{grid-column:1/-1}
-  .loadcols{display:grid;grid-template-columns:1fr 1fr}
-  .loadcol{border-right:1px solid var(--line);min-width:0}
-  .loadcol:last-child{border-right:none}
-  .lc-h{padding:9px 12px;background:#13161c;color:var(--accent);font-weight:600;font-size:12px;border-bottom:1px solid var(--line)}
-  @media(max-width:680px){.loadcols{grid-template-columns:1fr}.loadcol{border-right:none;border-bottom:1px solid var(--line)}}
   td.time{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px}
   td.time b{display:block;color:var(--txt);font-size:13px}
   .cell{display:flex;align-items:flex-start;gap:7px}
@@ -386,8 +382,10 @@ fLevel.innerHTML='<option value="mag">Магистратура</option>'+
   (BACH_DATA.length?'<option value="bach">Бакалавриат</option>':'')+
   '<option value="load">Нагрузка</option>';
 
-// --- НАГРУЗКА: пары в разрезе преподавателей (магистратура + бакалавриат) ---
+// --- НАГРУЗКА: реальная нагрузка преподавателя по неделям семестра ---
 const DAY_ORD={"ВТОРНИК":0,"ПЯТНИЦА":1,"ПОНЕДЕЛЬНИК":2,"СРЕДА":3,"ЧЕТВЕРГ":4,"СУББОТА":5};
+const DAY_ABBR={"ПОНЕДЕЛЬНИК":"ПН","ВТОРНИК":"ВТ","СРЕДА":"СР","ЧЕТВЕРГ":"ЧТ","ПЯТНИЦА":"ПТ","СУББОТА":"СБ"};
+const RU_MONTH_NOM=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 function buildLoad(){
   const T={};
   function add(name,tg,s){
@@ -396,32 +394,37 @@ function buildLoad(){
     if(tg && !T[name].tg) T[name].tg=tg;
     T[name].sessions.push(s);
   }
-  DATA.forEach((m,mi)=>m.grid.forEach(g=>{
-    [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
-      const s=g[key]; if(!s) return;
-      const k=teachKey(s); if(!k) return; const p=PEOPLE[k];
-      add(p.full,p.tg,{ord:100+mi,par:"both",group:`Магистратура · ${m.name} · ${m.day} ${m.date}`,
-        time:g.time,title:prettyName(s),place:`${m.venue} · ауд. ${aud}`});
+  // магистратура: каждая пара идёт 8 недель подряд от даты старта модуля
+  DATA.forEach((m,mi)=>{
+    const sw=dateToWeek(m.date);
+    const weeks=sw?Array.from({length:8},(_,i)=>sw+i):[];
+    m.grid.forEach(g=>{
+      [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
+        const s=g[key]; if(!s) return;
+        const k=teachKey(s); if(!k) return; const p=PEOPLE[k];
+        add(p.full,p.tg,{ord:100+mi,day:m.day,weeks:weeks,
+          time:g.time,title:prettyName(s),place:`${m.venue} · ауд. ${aud}`});
+      });
     });
-  }));
-  BACH_DATA.forEach(m=>{
-    const ord=(m.parity==="Нечётная"?0:1)*2+(DAY_ORD[m.day]||0);
+  });
+  // бакалавриат: пара идёт по неделям своей волны
+  BACH_DATA.forEach((m,bi)=>{
+    const weeks=weeksOf(m.weeks);
     m.grid.forEach(g=>{
       [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
         streamsIn(g[key]).forEach(sid=>{
           const st=STREAMS[sid]; if(!st||!st.tname) return;
-          add(st.tname,st.ttg,{ord:ord,par:(m.parity==="Нечётная"?"odd":"even"),
-            group:`Бакалавриат · ${m.day} · ${m.parity} неделя${m.wave?" · "+m.wave:""}`,
+          add(st.tname,st.ttg,{ord:bi,day:m.day,weeks:weeks,
             time:g.time,title:shortStream(sid),place:`${m.venue} · ауд. ${aud}`});
         });
       });
     });
   });
-  // склеенные потоки (одна пара в одном слоте) объединяем, чтобы не задваивать счёт
+  // склеенные потоки в одном слоте — одна пара
   Object.values(T).forEach(info=>{
     const map={}, merged=[];
     info.sessions.forEach(s=>{
-      const k=s.ord+"|"+s.time+"|"+s.place;
+      const k=s.ord+"|"+s.day+"|"+s.time+"|"+s.place;
       if(map[k]) map[k].title+=", "+s.title;
       else { map[k]={...s}; merged.push(map[k]); }
     });
@@ -429,19 +432,14 @@ function buildLoad(){
   });
   return T;
 }
-function loadBody(sess){
-  const s2=sess.slice().sort((a,b)=>a.ord-b.ord || (parseInt(a.time)-parseInt(b.time)));
-  const groups=[], idx={};
-  s2.forEach(s=>{ if(idx[s.group]===undefined){idx[s.group]=groups.length;groups.push({label:s.group,items:[]});}
-    groups[idx[s.group]].items.push(s); });
-  if(!groups.length) return '<tr><td colspan="3" class="empty">— нет пар —</td></tr>';
-  return groups.map(gr=>
-    `<tr class="grp"><td colspan="3">${gr.label} — ${gr.items.length} пар.</td></tr>`+
-    gr.items.map(s=>{const tt=s.time.split(" · ");
-      return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td><td>${s.title}</td><td>${s.place}</td></tr>`;
-    }).join("")
-  ).join("");
+function weekMonth(w){ return weekDate(w,"ЧЕТВЕРГ").getUTCMonth(); }
+function weekRange(w){
+  const a=weekDate(w,"ПОНЕДЕЛЬНИК"), b=weekDate(w,"ПЯТНИЦА"), p=n=>String(n).padStart(2,"0");
+  return a.getUTCMonth()===b.getUTCMonth()
+    ? `${p(a.getUTCDate())}–${p(b.getUTCDate())}.${p(b.getUTCMonth()+1)}`
+    : `${p(a.getUTCDate())}.${p(a.getUTCMonth()+1)}–${p(b.getUTCDate())}.${p(b.getUTCMonth()+1)}`;
 }
+function parityRu(w){ return (w%2===1)?"нечёт":"чёт"; }
 function renderLoad(){
   const t=fTeach.value;
   const grid=document.getElementById("grid"); grid.innerHTML="";
@@ -450,19 +448,36 @@ function renderLoad(){
   let shown=0;
   names.forEach(name=>{
     const info=load[name]; shown++;
-    const odd=info.sessions.filter(s=>s.par!=="even");   // нечётные + еженедельные
-    const even=info.sessions.filter(s=>s.par!=="odd");   // чётные + еженедельные
+    // разворачиваем каждую пару в её недели — реальная нагрузка по семестру
+    const occ=[];
+    info.sessions.forEach(s=>(s.weeks||[]).forEach(w=>
+      occ.push({week:w,day:s.day,time:s.time,title:s.title,place:s.place})));
+    occ.sort((a,b)=>a.week-b.week || (DAY_ORD[a.day]||0)-(DAY_ORD[b.day]||0) || parseInt(a.time)-parseInt(b.time));
+    const total=occ.length;
+    const byWeek={}; occ.forEach(o=>byWeek[o.week]=(byWeek[o.week]||0)+1);
+    const nWeeks=Object.keys(byWeek).length;
+    const avg=nWeeks?(total/nWeeks):0, maxW=nWeeks?Math.max(...Object.values(byWeek)):0;
+    let body="", curMonth=-1, curWeek=-1;
+    occ.forEach(o=>{
+      const mo=weekMonth(o.week);
+      if(mo!==curMonth){ curMonth=mo; curWeek=-1;
+        body+=`<tr class="mrow"><td colspan="3">${RU_MONTH_NOM[mo]}</td></tr>`; }
+      if(o.week!==curWeek){ curWeek=o.week;
+        body+=`<tr class="grp"><td colspan="3">Неделя ${o.week} · ${parityRu(o.week)} · ${weekRange(o.week)} — ${byWeek[o.week]} пар.</td></tr>`; }
+      const tt=o.time.split(" · ");
+      body+=`<tr><td class="time">${DAY_ABBR[o.day]||o.day} <b>${tt[1]||tt[0]}</b></td><td>${o.title}</td><td>${o.place}</td></tr>`;
+    });
     const tg=info.tg?`<span class="chip fmt"><a href="https://t.me/${info.tg}" target="_blank" style="color:inherit;text-decoration:none">@${info.tg}</a></span>`:"";
-    const col=(title,sess)=>`<div class="loadcol"><div class="lc-h">${title} — ${sess.length} пар.</div>`+
-      `<table><thead><tr><th>Время</th><th>Пара</th><th>Где</th></tr></thead>`+
-      `<tbody>${loadBody(sess)}</tbody></table></div>`;
     grid.insertAdjacentHTML("beforeend",`
       <div class="mod load">
         <div class="mhead">
-          <div class="mtop"><span class="mname">${name}</span><span class="mday">всего пар: ${info.sessions.length}</span></div>
-          <div class="mmeta">${tg}<span class="chip">магистратура идёт каждую неделю (в обеих колонках)</span></div>
+          <div class="mtop"><span class="mname">${name}</span><span class="mday">пар за семестр: ${total}</span></div>
+          <div class="mmeta">${tg}<span class="chip">недель с парами: ${nWeeks}</span><span class="chip">~${avg.toFixed(1)} пар/нед</span><span class="chip">пик: ${maxW}/нед</span></div>
         </div>
-        <div class="loadcols">${col("Нечётные недели",odd)}${col("Чётные недели",even)}</div>
+        <table>
+          <thead><tr><th>Когда</th><th>Пара</th><th>Где</th></tr></thead>
+          <tbody>${body||'<tr><td colspan="3" class="empty">— нет нагрузки —</td></tr>'}</tbody>
+        </table>
       </div>`);
   });
   document.getElementById("count").textContent = t?`Преподаватель: ${shown}`:`Преподавателей: ${shown}`;
