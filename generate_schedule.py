@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import urllib.request
+from datetime import date, timedelta
 from pathlib import Path
 
 OUTPUT = "raspisanie.html"
@@ -208,6 +209,12 @@ TEMPLATE = r"""<!DOCTYPE html>
   th,td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
   th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#15181f}
   tr.grp td{background:#15181f;color:var(--accent);font-weight:600;font-size:11.5px}
+  .mod.load{grid-column:1/-1}
+  .loadcols{display:grid;grid-template-columns:1fr 1fr}
+  .loadcol{border-right:1px solid var(--line);min-width:0}
+  .loadcol:last-child{border-right:none}
+  .lc-h{padding:9px 12px;background:#13161c;color:var(--accent);font-weight:600;font-size:12px;border-bottom:1px solid var(--line)}
+  @media(max-width:680px){.loadcols{grid-template-columns:1fr}.loadcol{border-right:none;border-bottom:1px solid var(--line)}}
   td.time{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px}
   td.time b{display:block;color:var(--txt);font-size:13px}
   .cell{display:flex;align-items:flex-start;gap:7px}
@@ -265,6 +272,24 @@ const BACH_DATA = __DATA_B__;
 const STREAMS = __STREAMS__;
 const MAG_STREAMS = __MAG_STREAMS__;   // название пары -> подразделение (магистратура)
 let MODE = "mag";   // "mag" — магистратура, "bach" — бакалавриат
+
+// --- Учебный календарь: якорь = понедельник 1-й недели, дальше всё считаем по 7 дней ---
+const ANCHOR_MS = Date.parse("__ANCHOR__" + "T00:00:00Z");
+const WD_OFF = {"ПОНЕДЕЛЬНИК":0,"ВТОРНИК":1,"СРЕДА":2,"ЧЕТВЕРГ":3,"ПЯТНИЦА":4,"СУББОТА":5,"ВОСКРЕСЕНЬЕ":6};
+function weekDate(week, dayName){
+  return new Date(ANCHOR_MS + ((week-1)*7 + (WD_OFF[dayName]||0))*86400000);
+}
+function fmtDate(d){
+  const p=n=>String(n).padStart(2,"0");
+  return p(d.getUTCDate())+"."+p(d.getUTCMonth()+1)+"."+d.getUTCFullYear();
+}
+function weeksOf(str){ return (str.match(/\d+/g)||[]).map(Number); }
+function dateToWeek(ddmmyyyy){
+  const m=String(ddmmyyyy).match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if(!m || isNaN(ANCHOR_MS)) return null;
+  const ms=Date.parse(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`);
+  return Math.floor((ms-ANCHOR_MS)/(7*86400000))+1;
+}
 
 function teachKey(s){
   if(s && TEACHERS[s]) return TEACHERS[s];
@@ -375,7 +400,7 @@ function buildLoad(){
     [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
       const s=g[key]; if(!s) return;
       const k=teachKey(s); if(!k) return; const p=PEOPLE[k];
-      add(p.full,p.tg,{ord:100+mi,group:`Магистратура · ${m.name} · ${m.day} ${m.date}`,
+      add(p.full,p.tg,{ord:100+mi,par:"both",group:`Магистратура · ${m.name} · ${m.day} ${m.date}`,
         time:g.time,title:prettyName(s),place:`${m.venue} · ауд. ${aud}`});
     });
   }));
@@ -385,7 +410,7 @@ function buildLoad(){
       [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
         streamsIn(g[key]).forEach(sid=>{
           const st=STREAMS[sid]; if(!st||!st.tname) return;
-          add(st.tname,st.ttg,{ord:ord,
+          add(st.tname,st.ttg,{ord:ord,par:(m.parity==="Нечётная"?"odd":"even"),
             group:`Бакалавриат · ${m.day} · ${m.parity} неделя${m.wave?" · "+m.wave:""}`,
             time:g.time,title:shortStream(sid),place:`${m.venue} · ауд. ${aud}`});
         });
@@ -404,6 +429,19 @@ function buildLoad(){
   });
   return T;
 }
+function loadBody(sess){
+  const s2=sess.slice().sort((a,b)=>a.ord-b.ord || (parseInt(a.time)-parseInt(b.time)));
+  const groups=[], idx={};
+  s2.forEach(s=>{ if(idx[s.group]===undefined){idx[s.group]=groups.length;groups.push({label:s.group,items:[]});}
+    groups[idx[s.group]].items.push(s); });
+  if(!groups.length) return '<tr><td colspan="3" class="empty">— нет пар —</td></tr>';
+  return groups.map(gr=>
+    `<tr class="grp"><td colspan="3">${gr.label} — ${gr.items.length} пар.</td></tr>`+
+    gr.items.map(s=>{const tt=s.time.split(" · ");
+      return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td><td>${s.title}</td><td>${s.place}</td></tr>`;
+    }).join("")
+  ).join("");
+}
 function renderLoad(){
   const t=fTeach.value;
   const grid=document.getElementById("grid"); grid.innerHTML="";
@@ -412,27 +450,19 @@ function renderLoad(){
   let shown=0;
   names.forEach(name=>{
     const info=load[name]; shown++;
-    const sess=info.sessions.slice().sort((a,b)=>a.ord-b.ord || (parseInt(a.time)-parseInt(b.time)));
-    const groups=[], idx={};
-    sess.forEach(s=>{ if(idx[s.group]===undefined){idx[s.group]=groups.length;groups.push({label:s.group,items:[]});}
-      groups[idx[s.group]].items.push(s); });
-    const rows=groups.map(gr=>
-      `<tr class="grp"><td colspan="3">${gr.label} — ${gr.items.length} пар.</td></tr>`+
-      gr.items.map(s=>{const tt=s.time.split(" · ");
-        return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td><td>${s.title}</td><td>${s.place}</td></tr>`;
-      }).join("")
-    ).join("");
+    const odd=info.sessions.filter(s=>s.par!=="even");   // нечётные + еженедельные
+    const even=info.sessions.filter(s=>s.par!=="odd");   // чётные + еженедельные
     const tg=info.tg?`<span class="chip fmt"><a href="https://t.me/${info.tg}" target="_blank" style="color:inherit;text-decoration:none">@${info.tg}</a></span>`:"";
+    const col=(title,sess)=>`<div class="loadcol"><div class="lc-h">${title} — ${sess.length} пар.</div>`+
+      `<table><thead><tr><th>Время</th><th>Пара</th><th>Где</th></tr></thead>`+
+      `<tbody>${loadBody(sess)}</tbody></table></div>`;
     grid.insertAdjacentHTML("beforeend",`
-      <div class="mod">
+      <div class="mod load">
         <div class="mhead">
           <div class="mtop"><span class="mname">${name}</span><span class="mday">всего пар: ${info.sessions.length}</span></div>
-          <div class="mmeta">${tg}</div>
+          <div class="mmeta">${tg}<span class="chip">магистратура идёт каждую неделю (в обеих колонках)</span></div>
         </div>
-        <table>
-          <thead><tr><th>Время</th><th>Пара</th><th>Где</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="loadcols">${col("Нечётные недели",odd)}${col("Чётные недели",even)}</div>
       </div>`);
   });
   document.getElementById("count").textContent = t?`Преподаватель: ${shown}`:`Преподавателей: ${shown}`;
@@ -489,12 +519,15 @@ function renderBach(){
       return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td>`+
         `<td${dim1}>${cellB(g.p1)}</td><td${dim2}>${cellB(g.p2)}</td></tr>`;
     }).join("");
+    const wks=weeksOf(m.weeks);
+    const first=(wks.length && !isNaN(ANCHOR_MS)) ? fmtDate(weekDate(Math.min(...wks), m.day)) : "";
     grid.insertAdjacentHTML("beforeend",`
       <div class="mod">
         <div class="mhead">
           <div class="mtop"><span class="mname">${m.day}</span><span class="mday">${m.parity} · ${m.wave}</span></div>
           <div class="mmeta">
             <span class="chip venue">📍 ${m.venue}</span>
+            ${first?`<span class="chip">📅 первое занятие: ${first}</span>`:""}
             <span class="chip fmt">недели: ${m.weeks}</span>
           </div>
         </div>
@@ -539,6 +572,8 @@ function renderMag(){
         <td${dim2}>${cell(g.p2)}</td>
       </tr>`;
     }).join("");
+    const sw=dateToWeek(m.date);
+    const weeksTxt = sw ? `${sw}–${sw+7}` : "";
     grid.insertAdjacentHTML("beforeend",`
       <div class="mod">
         <div class="mhead">
@@ -546,6 +581,8 @@ function renderMag(){
           <div class="mmeta">
             <span class="chip venue">📍 ${m.venue}</span>
             <span class="chip fmt">${m.fmt}</span>
+            <span class="chip">📅 первое занятие: ${m.date}</span>
+            ${weeksTxt?`<span class="chip">недели: ${weeksTxt} (8 нед.)</span>`:""}
           </div>
           <div class="subs">Подразделения: <b>${m.subs.join(", ")}</b></div>
         </div>
@@ -748,11 +785,30 @@ def parse_bachelor(rows):
     return cards
 
 
+def parse_calendar_anchor(rows):
+    """Из учебного календаря (внизу вкладки) вычисляет понедельник 1-й недели.
+
+    Колонки: N(13)=номер недели, O(14)=чёт/нечёт (н/ч), P–T(15–19)=даты ПН…ПТ,
+    заголовки месяцев — в колонке P. Возвращает ISO-дату якоря или "".
+    """
+    cur_month = None
+    for ri in range(len(rows)):
+        p = _g(rows, ri, 15).lower()
+        if p in _MONTHS:
+            cur_month = _MONTHS.index(p) + 1
+        wk, par, vt = _g(rows, ri, 13), _g(rows, ri, 14).lower(), _g(rows, ri, 16)
+        if cur_month and wk.isdigit() and par in ("н", "ч") and vt.isdigit():
+            year = 2026 if cur_month >= 8 else 2027  # осенний семестр 2026/27
+            anchor = date(year, cur_month, int(vt)) - timedelta(days=(int(wk) - 1) * 7 + 1)
+            return anchor.isoformat()
+    return ""
+
+
 def load_bachelor():
     rows = fetch_csv_rows(BACH_CSV_URL, BACH_CACHE, "Бакалавриат")
     if not rows:
-        return [], {}
-    return parse_bachelor(rows), parse_streams(rows)
+        return [], {}, ""
+    return parse_bachelor(rows), parse_streams(rows), parse_calendar_anchor(rows)
 
 
 def parse_mag_streams(rows):
@@ -775,7 +831,7 @@ def load_mag_streams():
 def build_html():
     dump = lambda obj: json.dumps(obj, ensure_ascii=False)
     rules = [[sub, key] for sub, key in TEACHER_RULES]
-    data_b, streams = load_bachelor()
+    data_b, streams, anchor = load_bachelor()
     mag_streams = load_mag_streams()
     return (TEMPLATE
             .replace("__DATA__", dump(DATA))
@@ -784,7 +840,8 @@ def build_html():
             .replace("__RULES__", dump(rules))
             .replace("__DATA_B__", dump(data_b))
             .replace("__STREAMS__", dump(streams))
-            .replace("__MAG_STREAMS__", dump(mag_streams)))
+            .replace("__MAG_STREAMS__", dump(mag_streams))
+            .replace("__ANCHOR__", anchor))
 
 
 def publish():
