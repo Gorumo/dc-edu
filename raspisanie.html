@@ -154,7 +154,9 @@ function fill(sel,vals,allLabel){
 fill(fDay,uniq(DATA.map(m=>m.day)),"Все дни");
 fill(fVenue,uniq(DATA.map(m=>m.venue)),"Все площадки");
 fill(fTeach,Object.keys(PEOPLE).map(k=>PEOPLE[k].full),"Все преподаватели");
-fill(fDisc,["КЗ","АД","МиК","НиТ","AI"],"Все дисциплины");
+const DISCS=[["КЗ","КультИИ КЗ"],["АД","КультИИ АД"],["МиК","КультИИ МиК"],["НиТ","ИИ Прод"],["AI","AI Culture"]];
+fDisc.innerHTML='<option value="">Все дисциплины</option>'+
+  DISCS.map(([v,l])=>`<option value="${v}">${l}</option>`).join("");
 
 function teaFull(s){const k=teachKey(s);return k?PEOPLE[k].full:null;}
 function render(){
