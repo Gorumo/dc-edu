@@ -14,12 +14,23 @@
 Зависимостей нет — нужен только Python 3.
 """
 
+import csv
+import io
 import json
+import re
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 OUTPUT = "raspisanie.html"
+
+# Источник данных бакалавриата — Google-таблица, вкладка «Потоки».
+SHEET_ID = "1cpllz5oY2lV1VbO_AzLNVkyrn6g9-8SHAuwjLOAgQkM"
+SHEET_GID = "1702931394"
+SHEET_CSV_URL = (f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+                 f"/export?format=csv&gid={SHEET_GID}")
+CSV_CACHE = "potoki.csv"  # локальная копия на случай, если сеть недоступна
 
 # ---------------------------------------------------------------------------
 # 1. ПРЕПОДАВАТЕЛИ:  ключ -> полное ФИО + telegram (без @)
@@ -198,6 +209,8 @@ TEMPLATE = r"""<!DOCTYPE html>
     font-size:13px;display:none;animation:pf .12s ease}
   @keyframes pf{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
   #pop .pf{font-weight:650;margin-bottom:5px;color:var(--txt)}
+  #pop .pl{font-size:12px;color:var(--muted);margin-top:3px}
+  #pop .pl b{color:var(--txt);font-weight:600}
   #pop a{color:var(--accent);text-decoration:none;font-size:12.5px}
   #pop a:hover{text-decoration:underline}
   .bar{width:4px;align-self:stretch;border-radius:3px;flex:none;margin-top:1px}
@@ -209,15 +222,16 @@ TEMPLATE = r"""<!DOCTYPE html>
 <body>
 <header>
   <h1>Расписание занятий · ВШ ЦК ОУМ</h1>
-  <div class="sub">Магистратура 2026–2027 · 6 модулей · дисциплины «Культура ИИ» и «ИИ-мышление»</div>
+  <div class="sub">2026–2027 · переключайте «Магистратуру» и «Бакалавриат» в фильтре «Программа»</div>
   <div class="controls">
+    <div class="ctl"><label>Программа</label><select id="fLevel"></select></div>
     <div class="ctl"><label>День недели</label><select id="fDay"></select></div>
     <div class="ctl"><label>Площадка</label><select id="fVenue"></select></div>
-    <div class="ctl"><label>Преподаватель</label><select id="fTeach"></select></div>
-    <div class="ctl"><label>Дисциплина</label><select id="fDisc"></select></div>
+    <div class="ctl"><label id="lblTeach">Преподаватель</label><select id="fTeach"></select></div>
+    <div class="ctl"><label id="lblDisc">Дисциплина</label><select id="fDisc"></select></div>
     <span class="count" id="count"></span>
   </div>
-  <div class="legend">
+  <div class="legend" id="legend">
     <span class="lg"><span class="dot" style="background:var(--kz)"></span>КультИИ КЗ — Квалифицированный заказчик</span>
     <span class="lg"><span class="dot" style="background:var(--ad)"></span>КультИИ АД — Аналитика данных</span>
     <span class="lg"><span class="dot" style="background:var(--mik)"></span>КультИИ МиК — Медиа и креативность</span>
@@ -233,6 +247,9 @@ const DATA = __DATA__;
 const PEOPLE = __PEOPLE__;
 const TEACHERS = __TEACHERS__;
 const TEACHER_RULES = __RULES__;
+const BACH_DATA = __DATA_B__;
+const STREAMS = __STREAMS__;
+let MODE = "mag";   // "mag" — магистратура, "bach" — бакалавриат
 
 function teachKey(s){
   if(s && TEACHERS[s]) return TEACHERS[s];
@@ -295,15 +312,91 @@ function fill(sel,vals,allLabel){
     vals.map(v=>`<option value="${v}">${v}</option>`).join("");
 }
 
-fill(fDay,uniq(DATA.map(m=>m.day)),"Все дни");
-fill(fVenue,uniq(DATA.map(m=>m.venue)),"Все площадки");
-fill(fTeach,Object.keys(PEOPLE).map(k=>PEOPLE[k].full),"Все преподаватели");
 const DISCS=[["КЗ","КультИИ КЗ"],["АД","КультИИ АД"],["МиК","КультИИ МиК"],["НиТ","ИИ Прод"],["AI","AI Culture"]];
-fDisc.innerHTML='<option value="">Все дисциплины</option>'+
-  DISCS.map(([v,l])=>`<option value="${v}">${l}</option>`).join("");
+function setupFilters(){
+  const data = MODE==="bach" ? BACH_DATA : DATA;
+  fill(fDay,uniq(data.map(m=>m.day)),"Все дни");
+  fill(fVenue,uniq(data.map(m=>m.venue)),"Все площадки");
+  if(MODE==="mag"){
+    lblTeach.textContent="Преподаватель"; lblDisc.textContent="Дисциплина";
+    fill(fTeach,Object.keys(PEOPLE).map(k=>PEOPLE[k].full),"Все преподаватели");
+    fDisc.innerHTML='<option value="">Все дисциплины</option>'+
+      DISCS.map(([v,l])=>`<option value="${v}">${l}</option>`).join("");
+    legend.style.display="";
+  } else {
+    lblTeach.textContent="ОП"; lblDisc.textContent="Неделя";
+    fill(fTeach,uniq(Object.values(STREAMS).map(s=>s.op)),"Все ОП");
+    fill(fDisc,uniq(BACH_DATA.map(m=>m.parity)),"Все недели");
+    legend.style.display="none";
+  }
+}
+fLevel.innerHTML='<option value="mag">Магистратура</option>'+
+  (BACH_DATA.length?'<option value="bach">Бакалавриат</option>':'');
+setupFilters();
+
+// --- БАКАЛАВРИАТ: ячейка = поток(и); клик показывает ОП и детали ---
+const STREAM_RE=/ИвИИ\s+\d+\s+\(ВШ ЦК1\)\s+\S+\s+\d+\.\d+/g;
+function streamsIn(s){return s ? (s.match(STREAM_RE)||[]) : [];}
+function opOf(sid){const x=STREAMS[sid];return x?x.op:null;}
+function shortStream(sid){return sid.replace(/\s*\(ВШ ЦК1\)\s*/," · ");}
+function shortOp(op){return op.replace(/\s*20\d\d$/,"");}
+function bukvaColor(b){
+  if(!b) return "var(--muted)";
+  let h=0; for(const c of b) h=(h*37+c.charCodeAt(0))%360;
+  return `hsl(${h},55%,58%)`;
+}
+function cellB(raw){
+  const list=streamsIn(raw);
+  if(!list.length) return '<span class="empty">—</span>';
+  return list.map(sid=>{
+    const s=STREAMS[sid]||{};
+    return `<span class="cell"><span class="bar" style="background:${bukvaColor(s.bukva)}"></span>`+
+      `<span><span class="ptea has" tabindex="0" data-sid="${sid}">${shortStream(sid)}</span>`+
+      (s.op?`<span class="ptea">${shortOp(s.op)}</span>`:"")+`</span></span>`;
+  }).join('<span style="display:block;height:6px"></span>');
+}
+function renderBach(){
+  const d=fDay.value,v=fVenue.value,op=fTeach.value,wk=fDisc.value;
+  const grid=document.getElementById("grid");
+  grid.innerHTML=""; let shown=0;
+  BACH_DATA.forEach(m=>{
+    if(d && m.day!==d) return;
+    if(v && m.venue!==v) return;
+    if(wk && m.parity!==wk) return;
+    if(op && !m.grid.some(g=>[...streamsIn(g.p1),...streamsIn(g.p2)].some(x=>opOf(x)===op))) return;
+    shown++;
+    const rows=m.grid.map(g=>{
+      const s1=streamsIn(g.p1), s2=streamsIn(g.p2);
+      if(!s1.length && !s2.length) return "";
+      const o1=op && s1.some(x=>opOf(x)===op), o2=op && s2.some(x=>opOf(x)===op);
+      if(op && !o1 && !o2) return "";
+      const dim1=(op && !o1)?' style="opacity:.32"':'';
+      const dim2=(op && !o2)?' style="opacity:.32"':'';
+      const tt=g.time.split(" · ");
+      return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td>`+
+        `<td${dim1}>${cellB(g.p1)}</td><td${dim2}>${cellB(g.p2)}</td></tr>`;
+    }).join("");
+    grid.insertAdjacentHTML("beforeend",`
+      <div class="mod">
+        <div class="mhead">
+          <div class="mtop"><span class="mname">${m.day}</span><span class="mday">${m.parity} · ${m.wave}</span></div>
+          <div class="mmeta">
+            <span class="chip venue">📍 ${m.venue}</span>
+            <span class="chip fmt">недели: ${m.weeks}</span>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Пара</th><th>Поток 1 · ${m.aud1}</th><th>Поток 2 · ${m.aud2}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`);
+  });
+  document.getElementById("count").textContent=`Показано: ${shown} из ${BACH_DATA.length}`;
+}
 
 function teaFull(s){const k=teachKey(s);return k?PEOPLE[k].full:null;}
-function render(){
+function render(){ return MODE==="bach" ? renderBach() : renderMag(); }
+function renderMag(){
   const d=fDay.value,v=fVenue.value,t=fTeach.value,dc=fDisc.value;
   const grid=document.getElementById("grid");
   grid.innerHTML="";
@@ -348,14 +441,30 @@ function render(){
   });
   document.getElementById("count").textContent = `Показано модулей: ${shown} из ${DATA.length}`;
 }
+fLevel.addEventListener("change",()=>{
+  MODE=fLevel.value;
+  [fDay,fVenue,fTeach,fDisc].forEach(s=>s.value="");
+  setupFilters();
+  render();
+});
 [fDay,fVenue,fTeach,fDisc].forEach(s=>s.addEventListener("change",render));
 render();
 
 const pop=document.getElementById("pop");
 function showPop(el){
-  const k=el.dataset.tk, p=PEOPLE[k];
-  if(!p) return;
-  pop.innerHTML=`<div class="pf">${p.full}</div><a href="https://t.me/${p.tg}" target="_blank">@${p.tg}</a>`;
+  if(el.dataset.sid){
+    const s=STREAMS[el.dataset.sid];
+    if(!s) return;
+    pop.innerHTML=`<div class="pf">${s.op||el.dataset.sid}</div>`+
+      `<div class="pl">Подразделение: <b>${s.podr||"—"}</b></div>`+
+      `<div class="pl">Буква ${s.bukva||"—"} · КЦП ${s.kcp||"—"} · лимит ${s.limit||"—"}</div>`+
+      (s.teacher?`<div class="pl">Преподаватель: <b>${s.teacher}</b></div>`:"")+
+      `<div class="pl">${[s.day,s.parity,s.venue,s.wave].filter(Boolean).join(" · ")}</div>`;
+  } else {
+    const p=PEOPLE[el.dataset.tk];
+    if(!p) return;
+    pop.innerHTML=`<div class="pf">${p.full}</div><a href="https://t.me/${p.tg}" target="_blank">@${p.tg}</a>`;
+  }
   pop.style.display="block";
   const r=el.getBoundingClientRect();
   let top=r.bottom+8, left=r.left;
@@ -383,14 +492,127 @@ addEventListener("scroll",hidePop,true);
 """
 
 
+# ---------------------------------------------------------------------------
+# БАКАЛАВРИАТ: данные тянутся из Google-таблицы (вкладка «Потоки»).
+#   • потоки      — колонка E (id) + B (ОП) + остальные метаданные (A,C,D,F,H–L)
+#   • расписание  — блоки матрицы в колонках N–T (день/чёт-нечёт/время/аудитории)
+# ---------------------------------------------------------------------------
+_MONTHS = ("январь", "февраль", "март", "апрель", "май", "июнь", "июль",
+           "август", "сентябрь", "октябрь", "ноябрь", "декабрь")
+_DAYS = {"ПН": "ПОНЕДЕЛЬНИК", "ВТ": "ВТОРНИК", "СР": "СРЕДА",
+         "ЧТ": "ЧЕТВЕРГ", "ПТ": "ПЯТНИЦА"}
+
+
+def fetch_potoki_rows():
+    """Скачивает вкладку «Потоки» как CSV; при сбое берёт локальный кэш."""
+    cache = Path(__file__).resolve().parent / CSV_CACHE
+    try:
+        with urllib.request.urlopen(SHEET_CSV_URL, timeout=20) as resp:
+            text = resp.read().decode("utf-8")
+        cache.write_text(text, encoding="utf-8")
+        print("Бакалавриат: данные загружены из Google Sheets.")
+    except Exception as exc:                       # noqa: BLE001
+        if cache.exists():
+            print(f"Бакалавриат: не удалось скачать ({exc}), использую кэш {CSV_CACHE}.",
+                  file=sys.stderr)
+            text = cache.read_text(encoding="utf-8")
+        else:
+            print(f"Бакалавриат: не удалось скачать ({exc}) и кэша нет — пропускаю.",
+                  file=sys.stderr)
+            return []
+    return list(csv.reader(io.StringIO(text)))
+
+
+def _g(rows, ri, ci):
+    return (rows[ri][ci] if ci < len(rows[ri]) else "").strip()
+
+
+def parse_streams(rows):
+    """Колонка E (id потока) -> метаданные (ОП и пр.) для всплывающей карточки."""
+    streams = {}
+    for ri in range(2, len(rows)):
+        sid = _g(rows, ri, 4)
+        if not sid or sid == "Поток":
+            continue
+        streams.setdefault(sid, {
+            "podr": _g(rows, ri, 0), "op": _g(rows, ri, 1),
+            "bukva": _g(rows, ri, 2), "kcp": _g(rows, ri, 3),
+            "limit": _g(rows, ri, 5), "day": _g(rows, ri, 7),
+            "parity": _g(rows, ri, 8), "venue": _g(rows, ri, 9),
+            "teacher": _g(rows, ri, 10), "wave": _g(rows, ri, 11),
+        })
+    return streams
+
+
+def _fix_time(o):
+    m = re.match(r"(\d+)\s*\((.+?)\)", o)
+    return f'{m.group(1)} · {m.group(2).replace(" - ", "–").replace(" ", "")}' if m else o
+
+
+def _venue_of(aud):
+    if aud.endswith("Л"):
+        return "ЛОМО"
+    if aud.endswith("К"):
+        return "КРОН"
+    return aud or "—"
+
+
+def _parse_marker(s):
+    m = re.match(r"(ВТ|ПТ|ПН|СР|ЧТ)\s*(\d+)?\s*ВОЛНА\s*([\d, ]*)", s)
+    if not m:
+        return None
+    return (_DAYS[m.group(1)], m.group(2) or "", (m.group(3) or "").strip().rstrip(","))
+
+
+def parse_bachelor(rows):
+    """Строит карточки расписания (день · чётность) из матрицы N–T."""
+    boundary = next((ri for ri in range(len(rows))
+                     if _g(rows, ri, 15).lower() in _MONTHS), len(rows))
+    cards = []
+    for ri in range(boundary):
+        if _g(rows, ri, 14) != "Аудитория":           # строка с аудиториями
+            continue
+        parity = "Нечётная" if _g(rows, ri, 13).lower().startswith("неч") else "Чётная"
+        # строки времени/пар идут ниже до первого «не-времени»
+        grid_rows = []
+        rj = ri + 1
+        while rj < boundary and re.match(r"\d+\s*\(", _g(rows, rj, 14)):
+            grid_rows.append(rj)
+            rj += 1
+        # два дня в блоке: (P,Q)=колонки 15,16 и (S,T)=18,19; маркер дня — строкой выше
+        for c1, c2 in [(15, 16), (18, 19)]:
+            marker = _parse_marker(_g(rows, ri - 1, c1))
+            if not marker:
+                continue
+            day, wave, weeks = marker
+            aud1, aud2 = _g(rows, ri, c1), _g(rows, ri, c2)
+            grid = [{"time": _fix_time(_g(rows, r, 14)),
+                     "p1": _g(rows, r, c1), "p2": _g(rows, r, c2)} for r in grid_rows]
+            cards.append({"day": day, "parity": parity,
+                          "wave": (wave + " волна" if wave else ""),
+                          "weeks": weeks, "venue": _venue_of(aud1),
+                          "aud1": aud1, "aud2": aud2, "grid": grid})
+    return cards
+
+
+def load_bachelor():
+    rows = fetch_potoki_rows()
+    if not rows:
+        return [], {}
+    return parse_bachelor(rows), parse_streams(rows)
+
+
 def build_html():
     dump = lambda obj: json.dumps(obj, ensure_ascii=False)
     rules = [[sub, key] for sub, key in TEACHER_RULES]
+    data_b, streams = load_bachelor()
     return (TEMPLATE
             .replace("__DATA__", dump(DATA))
             .replace("__PEOPLE__", dump(PEOPLE))
             .replace("__TEACHERS__", dump(TEACHERS))
-            .replace("__RULES__", dump(rules)))
+            .replace("__RULES__", dump(rules))
+            .replace("__DATA_B__", dump(data_b))
+            .replace("__STREAMS__", dump(streams)))
 
 
 def publish():
