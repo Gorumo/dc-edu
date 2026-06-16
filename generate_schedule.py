@@ -274,7 +274,7 @@ function prettyName(s){
   const mod = out.match(/\((?:Мод|Mod) (\d+)\)/);   // номер модуля
   const tail = out.match(/(\d+)\.(\d+)\s*$/);        // хвост вида 1.2
   if(mod && tail){
-    const on = /\bON\b/.test(out) ? " ON" : "";      // сохраняем пометку онлайна
+    const on = /\bON\b/.test(out) ? " Онлайн" : "";  // сохраняем пометку онлайна
     const head = out.slice(0, out.search(/\((?:Мод|Mod)/)).trim();
     out = `${head} ${mod[1]}.${tail[2]}${on}`;
   }
