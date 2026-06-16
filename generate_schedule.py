@@ -287,6 +287,7 @@ fill(fVenue,uniq(DATA.map(m=>m.venue)),"Все площадки");
 fill(fTeach,Object.keys(PEOPLE).map(k=>PEOPLE[k].full),"Все преподаватели");
 fill(fDisc,["КЗ","АД","МиК","НиТ","AI"],"Все дисциплины");
 
+function teaFull(s){const k=teachKey(s);return k?PEOPLE[k].full:null;}
 function render(){
   const d=fDay.value,v=fVenue.value,t=fTeach.value,dc=fDisc.value;
   const grid=document.getElementById("grid");
@@ -295,24 +296,22 @@ function render(){
   DATA.forEach(m=>{
     if(d && m.day!==d) return;
     if(v && m.venue!==v) return;
-    if(t){
-      const full=g=>{const k=teachKey(g);return k?PEOPLE[k].full:null;};
-      const has=m.grid.some(g=>full(g.p1)===t||full(g.p2)===t);
-      if(!has) return;
-    }
-    if(dc){
-      const has=m.grid.some(g=>discKey(g.p1)===dc||discKey(g.p2)===dc);
-      if(!has) return;
-    }
+    if(t && !m.grid.some(g=>teaFull(g.p1)===t||teaFull(g.p2)===t)) return;
+    if(dc && !m.grid.some(g=>discKey(g.p1)===dc||discKey(g.p2)===dc)) return;
     shown++;
     const rows=m.grid.map(g=>{
+      const t1 = t && teaFull(g.p1)===t, t2 = t && teaFull(g.p2)===t;
+      // при выбранном преподавателе оставляем только строки с его парами
+      if(t && !t1 && !t2) return "";
       const hl1 = dc && discKey(g.p1)===dc, hl2 = dc && discKey(g.p2)===dc;
-      const dim = dc ? ' style="opacity:.32"' : '';
+      // приглушаем ячейку, если активен фильтр и пара ему не соответствует
+      const dim1 = ((t && !t1) || (dc && !hl1)) ? ' style="opacity:.32"' : '';
+      const dim2 = ((t && !t2) || (dc && !hl2)) ? ' style="opacity:.32"' : '';
       const tt=g.time.split(" · ");
       return `<tr>
         <td class="time"><b>${tt[0]}</b>${tt[1]||""}</td>
-        <td${dc&&!hl1?dim:''}>${cell(g.p1)}</td>
-        <td${dc&&!hl2?dim:''}>${cell(g.p2)}</td>
+        <td${dim1}>${cell(g.p1)}</td>
+        <td${dim2}>${cell(g.p2)}</td>
       </tr>`;
     }).join("");
     grid.insertAdjacentHTML("beforeend",`
