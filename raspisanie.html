@@ -74,10 +74,10 @@
     <span class="count" id="count"></span>
   </div>
   <div class="legend">
-    <span class="lg"><span class="dot" style="background:var(--kz)"></span>КультИИ: КЗ — Квалифицированный заказчик</span>
-    <span class="lg"><span class="dot" style="background:var(--ad)"></span>КультИИ: АД — Аналитика данных</span>
-    <span class="lg"><span class="dot" style="background:var(--mik)"></span>КультИИ: МиК — Медиа и креативность</span>
-    <span class="lg"><span class="dot" style="background:var(--nit)"></span>ИИ-м: НиТ — Наука и технологии</span>
+    <span class="lg"><span class="dot" style="background:var(--kz)"></span>КультИИ КЗ — Квалифицированный заказчик</span>
+    <span class="lg"><span class="dot" style="background:var(--ad)"></span>КультИИ АД — Аналитика данных</span>
+    <span class="lg"><span class="dot" style="background:var(--mik)"></span>КультИИ МиК — Медиа и креативность</span>
+    <span class="lg"><span class="dot" style="background:var(--nit)"></span>ИИ Прод — Наука и технологии</span>
     <span class="lg"><span class="dot" style="background:var(--eng)"></span>AI Culture (англ.)</span>
   </div>
 </header>
@@ -123,6 +123,19 @@ function discKey(s){
   if(/AI Culture/.test(s)) return "AI";
   return "";
 }
+function prettyName(s){
+  if(!s) return s;
+  // ИИ-м: НиТ -> ИИ Прод; убираем двоеточие после КультИИ
+  let out = s.replace("ИИ-м: НиТ","ИИ Прод").replace("КультИИ:","КультИИ");
+  const mod = out.match(/\((?:Мод|Mod) (\d+)\)/);   // номер модуля
+  const tail = out.match(/(\d+)\.(\d+)\s*$/);        // хвост вида 1.2
+  if(mod && tail){
+    const on = /\bON\b/.test(out) ? " ON" : "";      // сохраняем пометку онлайна
+    const head = out.slice(0, out.search(/\((?:Мод|Mod)/)).trim();
+    out = `${head} ${mod[1]}.${tail[2]}${on}`;
+  }
+  return out;
+}
 function cell(s){
   if(!s) return '<span class="empty">—</span>';
   const k=teachKey(s);
@@ -130,7 +143,7 @@ function cell(s){
     ? `<span class="ptea has" tabindex="0" data-tk="${k}">👤 ${teach(s)}</span>`
     : `<span class="ptea">👤 не указан</span>`;
   return `<span class="cell"><span class="bar" style="background:${discColor(s)}"></span>`+
-    `<span><span class="disc">${s}</span>${tea}</span></span>`;
+    `<span><span class="disc">${prettyName(s)}</span>${tea}</span></span>`;
 }
 function uniq(arr){return [...new Set(arr.filter(Boolean))];}
 function fill(sel,vals,allLabel){
