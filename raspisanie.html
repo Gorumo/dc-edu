@@ -152,7 +152,7 @@ function cell(s){
     ? `<span class="ptea has" tabindex="0" data-tk="${k}">👤 ${teach(s)}</span>`
     : `<span class="ptea">👤 не указан</span>`;
   const disc = (s in MAG_STREAMS)
-    ? `<span class="sname" tabindex="0" data-md="${s}">${prettyName(s)}</span>`
+    ? `<span class="disc"><span class="sname" tabindex="0" data-md="${s}">${prettyName(s)}</span></span>`
     : `<span class="disc">${prettyName(s)}</span>`;
   return `<span class="cell"><span class="bar" style="background:${discColor(s)}"></span>`+
     `<span>${disc}${tea}</span></span>`;
