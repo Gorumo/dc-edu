@@ -26,6 +26,12 @@
     border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
   .toggle:hover{border-color:var(--accent)}
   .toggle.on{background:var(--accent);color:#0d0f13;border-color:var(--accent);font-weight:600}
+  .weekbar{display:none;flex-wrap:wrap;gap:5px;margin-top:13px;align-items:center}
+  .weekbar .wlbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:5px}
+  .wbtn{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:7px;
+    padding:5px 0;width:34px;font-size:12.5px;cursor:pointer;font-variant-numeric:tabular-nums}
+  .wbtn:hover{border-color:var(--accent)}
+  .wbtn.on{background:var(--accent);color:#0d0f13;border-color:var(--accent);font-weight:700}
   .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px;font-size:12px;color:var(--muted)}
   .lg{display:inline-flex;align-items:center;gap:6px}
   .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
@@ -84,6 +90,7 @@
   <h1>Расписание занятий · ВШ ЦК ОУМ</h1>
   <div class="sub">2026–2027 · переключайте «Магистратуру» и «Бакалавриат» в фильтре «Программа»</div>
   <div class="controls">
+    <button id="btnWeek" class="toggle" type="button">📅 Неделя</button>
     <button id="btnLoad" class="toggle" type="button">📊 Нагрузка</button>
     <div class="ctl" id="ctlLevel"><label>Программа</label><select id="fLevel"></select></div>
     <div class="ctl" id="ctlDay"><label>День недели</label><select id="fDay"></select></div>
@@ -92,6 +99,7 @@
     <div class="ctl" id="ctlDisc"><label id="lblDisc">Дисциплина</label><select id="fDisc"></select></div>
     <span class="count" id="count"></span>
   </div>
+  <div class="weekbar" id="weekBar"></div>
   <div class="legend" id="legend">
     <span class="lg"><span class="dot" style="background:var(--kz)"></span>КультИИ КЗ — Квалифицированный заказчик</span>
     <span class="lg"><span class="dot" style="background:var(--ad)"></span>КультИИ АД — Аналитика данных</span>
@@ -144,8 +152,9 @@ function customIn(raw){ return raw ? raw.split("|").map(s=>s.trim()).filter(k=>C
 function customOpOf(k){ const c=CUSTOM[k]; return c&&c.op?c.op:null; }
 function customOps(){ return uniq(Object.keys(CUSTOM).map(customOpOf)); }
 
-let MODE = "mag";       // фактический режим рендера: "mag" | "bach" | "load"
+let MODE = "mag";       // фактический режим рендера: "mag" | "bach" | "load" | "week"
 let loadOn = false;     // включён ли режим «Нагрузка» (отдельный переключатель)
+let weekOn = false;     // включён ли режим «Неделя» (расписание по дням недели)
 
 // --- Учебный календарь: якорь = понедельник 1-й недели, дальше всё считаем по 7 дней ---
 const ANCHOR_MS = Date.parse("2026-08-31" + "T00:00:00Z");
@@ -232,6 +241,11 @@ function fill(sel,vals,allLabel){
 const DISCS=[["КЗ","КультИИ КЗ"],["АД","КультИИ АД"],["МиК","КультИИ МиК"],["НиТ","ИИ Прод"],["AI","AI Culture"]];
 function showCtl(el,on){el.style.display=on?"":"none";}
 function setupFilters(){
+  if(MODE==="week"){
+    showCtl(ctlLevel,false); showCtl(ctlDay,false); showCtl(ctlVenue,false); showCtl(ctlDisc,false); showCtl(ctlTeach,false);
+    legend.style.display="none";
+    return;
+  }
   if(MODE==="load"){
     lblTeach.textContent="Преподаватель";
     fill(fTeach,Object.keys(buildLoad()).sort((a,b)=>a.localeCompare(b,"ru")),"Все преподаватели");
@@ -481,7 +495,78 @@ function renderWeekly(grid){
       </div>`);
   });
 }
+// --- НЕДЕЛЯ: расписание выбранной учебной недели (2–18) по дням ---
+const WEEK_MIN=2, WEEK_MAX=18;
+let curWeek=null;                       // выбранная неделя; null => вычислим автоматически
+function todayWeek(){ return Math.floor((Date.now()-ANCHOR_MS)/(7*86400000))+1; }
+function clampWeek(w){ return Math.max(WEEK_MIN, Math.min(WEEK_MAX, w)); }
+function timeRow(g, fcell){
+  const tt=g.time.split(" · ");
+  return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td><td>${fcell(g.p1)}</td><td>${fcell(g.p2)}</td></tr>`;
+}
+function weekCard(day,date,title,meta,subs,heads,rows){
+  return `
+    <div class="mod">
+      <div class="mhead">
+        <div class="mtop"><span class="mname">${DAY_NICE[day]||day}, ${date}</span><span class="mday">${title}</span></div>
+        <div class="mmeta">${meta}</div>
+        ${subs?`<div class="subs">${subs}</div>`:""}
+      </div>
+      <table><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+}
+function weekCards(W){
+  const cards=[]; const off=d=>WD_OFF[d]||0;
+  // Магистратура · модули-интенсивы (8 недель от старта)
+  DATA.forEach(m=>{
+    const sw=dateToWeek(m.date); if(sw==null || W<sw || W>sw+7) return;
+    const rows=m.grid.filter(g=>g.p1||g.p2).map(g=>timeRow(g,cell)).join("");
+    if(!rows) return;
+    const meta=`<span class="chip">Магистратура</span><span class="chip venue">📍 ${m.venue}</span><span class="chip fmt">${m.fmt}</span>`;
+    cards.push({off:off(m.day),prog:0,html:weekCard(m.day,fmtDate(weekDate(W,m.day)),m.name,meta,
+      `Подразделения: <b>${m.subs.join(", ")}</b>`,
+      `<th>Пара</th><th>Поток 1 · ${audName(m.aud1)}</th><th>Поток 2 · ${audName(m.aud2)}</th>`,rows)});
+  });
+  // Магистратура · еженедельные онлайн-пары
+  MAG_WEEKLY.forEach(m=>{
+    if(!weeksOf(m.weeks).includes(W)) return;
+    const rows=m.grid.map(g=>timeRow(g,cellB)).join("");
+    const meta=`<span class="chip">Магистратура</span><span class="chip venue">📍 ${m.venue}</span><span class="chip fmt">ОНЛАЙН</span>`;
+    cards.push({off:off(m.day),prog:0,html:weekCard(m.day,fmtDate(weekDate(W,m.day)),m.name,meta,"",
+      `<th>Пара</th><th>Поток 1 · ${m.aud1}</th><th>Поток 2 · ${m.aud2}</th>`,rows)});
+  });
+  // Бакалавриат · волны (потоки остаются склеенными — рендерим через cellB)
+  BACH_DATA.forEach(m=>{
+    if(!weeksOf(m.weeks).includes(W)) return;
+    const rows=m.grid.filter(g=>streamsIn(g.p1).length||streamsIn(g.p2).length||customIn(g.p1).length||customIn(g.p2).length)
+      .map(g=>timeRow(g,cellB)).join("");
+    if(!rows) return;
+    const meta=`<span class="chip">Бакалавриат</span><span class="chip venue">📍 ${m.venue}</span><span class="chip fmt">${m.parity} · ${m.wave}</span>`;
+    cards.push({off:off(m.day),prog:1,html:weekCard(m.day,fmtDate(weekDate(W,m.day)),"Бакалавриат",meta,"",
+      `<th>Пара</th><th>Поток 1 · ${m.aud1}</th><th>Поток 2 · ${m.aud2}</th>`,rows)});
+  });
+  cards.sort((a,b)=>a.off-b.off || a.prog-b.prog);
+  return cards;
+}
+function renderWeekBar(){
+  const bar=document.getElementById("weekBar");
+  let html=`<span class="wlbl">Неделя</span>`;
+  for(let w=WEEK_MIN;w<=WEEK_MAX;w++){
+    html+=`<button class="wbtn${w===curWeek?' on':''}" data-w="${w}" type="button" title="с ${fmtDate(weekDate(w,"ПОНЕДЕЛЬНИК"))}">${w}</button>`;
+  }
+  bar.innerHTML=html;
+}
+function renderWeek(){
+  if(curWeek==null) curWeek=clampWeek(todayWeek());
+  renderWeekBar();
+  const grid=document.getElementById("grid"); grid.innerHTML="";
+  const cards=weekCards(curWeek);
+  grid.insertAdjacentHTML("beforeend", cards.map(c=>c.html).join("") ||
+    '<div class="mod load"><div class="mhead"><div class="mtop"><span class="mname empty">На этой неделе занятий нет</span></div></div></div>');
+  document.getElementById("count").textContent=`Неделя ${curWeek} · ${weekRange(curWeek)} · ${parityRu(curWeek)} · карточек: ${cards.length}`;
+}
 function render(){
+  if(MODE==="week") return renderWeek();
   if(MODE==="load") return renderLoad();
   return MODE==="bach" ? renderBach() : renderMag();
 }
@@ -536,15 +621,24 @@ function renderMag(){
   document.getElementById("count").textContent = `Показано модулей: ${shown} из ${DATA.length}`;
 }
 function switchMode(){
-  MODE = loadOn ? "load" : fLevel.value;
+  MODE = weekOn ? "week" : (loadOn ? "load" : fLevel.value);
   [fDay,fVenue,fTeach,fDisc].forEach(s=>s.value="");
+  document.getElementById("weekBar").style.display = (MODE==="week") ? "flex" : "none";
   setupFilters();
   render();
 }
+function syncBtns(){ btnLoad.classList.toggle("on",loadOn); btnWeek.classList.toggle("on",weekOn); }
 btnLoad.addEventListener("click",()=>{
-  loadOn=!loadOn;
-  btnLoad.classList.toggle("on",loadOn);
-  switchMode();
+  loadOn=!loadOn; if(loadOn) weekOn=false;
+  syncBtns(); switchMode();
+});
+btnWeek.addEventListener("click",()=>{
+  weekOn=!weekOn; if(weekOn) loadOn=false;
+  syncBtns(); switchMode();
+});
+document.getElementById("weekBar").addEventListener("click",e=>{
+  const b=e.target.closest(".wbtn"); if(!b) return;
+  curWeek=+b.dataset.w; renderWeek();
 });
 fLevel.addEventListener("change",switchMode);
 [fDay,fVenue,fTeach,fDisc].forEach(s=>s.addEventListener("change",render));
