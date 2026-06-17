@@ -189,6 +189,10 @@ TEMPLATE = r"""<!DOCTYPE html>
   .ctl label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
   select{background:var(--card2);color:var(--txt);border:1px solid var(--line);
     border-radius:8px;padding:6px 9px;font-size:13px;min-width:140px}
+  .toggle{align-self:flex-end;background:var(--card2);color:var(--txt);border:1px solid var(--line);
+    border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
+  .toggle:hover{border-color:var(--accent)}
+  .toggle.on{background:var(--accent);color:#0d0f13;border-color:var(--accent);font-weight:600}
   .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px;font-size:12px;color:var(--muted)}
   .lg{display:inline-flex;align-items:center;gap:6px}
   .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
@@ -242,7 +246,8 @@ TEMPLATE = r"""<!DOCTYPE html>
   <h1>Расписание занятий · ВШ ЦК ОУМ</h1>
   <div class="sub">2026–2027 · переключайте «Магистратуру» и «Бакалавриат» в фильтре «Программа»</div>
   <div class="controls">
-    <div class="ctl"><label>Программа</label><select id="fLevel"></select></div>
+    <button id="btnLoad" class="toggle" type="button">📊 Нагрузка</button>
+    <div class="ctl" id="ctlLevel"><label>Программа</label><select id="fLevel"></select></div>
     <div class="ctl" id="ctlDay"><label>День недели</label><select id="fDay"></select></div>
     <div class="ctl" id="ctlVenue"><label>Площадка</label><select id="fVenue"></select></div>
     <div class="ctl" id="ctlTeach"><label id="lblTeach">Преподаватель</label><select id="fTeach"></select></div>
@@ -268,7 +273,8 @@ const TEACHER_RULES = __RULES__;
 const BACH_DATA = __DATA_B__;
 const STREAMS = __STREAMS__;
 const MAG_STREAMS = __MAG_STREAMS__;   // название пары -> подразделение (магистратура)
-let MODE = "mag";   // "mag" — магистратура, "bach" — бакалавриат
+let MODE = "mag";       // фактический режим рендера: "mag" | "bach" | "load"
+let loadOn = false;     // включён ли режим «Нагрузка» (отдельный переключатель)
 
 // --- Учебный календарь: якорь = понедельник 1-й недели, дальше всё считаем по 7 дней ---
 const ANCHOR_MS = Date.parse("__ANCHOR__" + "T00:00:00Z");
@@ -358,11 +364,11 @@ function setupFilters(){
   if(MODE==="load"){
     lblTeach.textContent="Преподаватель";
     fill(fTeach,Object.keys(buildLoad()).sort((a,b)=>a.localeCompare(b,"ru")),"Все преподаватели");
-    showCtl(ctlDay,false); showCtl(ctlVenue,false); showCtl(ctlDisc,false); showCtl(ctlTeach,true);
+    showCtl(ctlLevel,false); showCtl(ctlDay,false); showCtl(ctlVenue,false); showCtl(ctlDisc,false); showCtl(ctlTeach,true);
     legend.style.display="none";
     return;
   }
-  showCtl(ctlDay,true); showCtl(ctlVenue,true); showCtl(ctlDisc,true); showCtl(ctlTeach,true);
+  showCtl(ctlLevel,true); showCtl(ctlDay,true); showCtl(ctlVenue,true); showCtl(ctlDisc,true); showCtl(ctlTeach,true);
   const data = MODE==="bach" ? BACH_DATA : DATA;
   fill(fDay,uniq(data.map(m=>m.day)),"Все дни");
   fill(fVenue,uniq(data.map(m=>m.venue)),"Все площадки");
@@ -380,8 +386,7 @@ function setupFilters(){
   }
 }
 fLevel.innerHTML='<option value="mag">Магистратура</option>'+
-  (BACH_DATA.length?'<option value="bach">Бакалавриат</option>':'')+
-  '<option value="load">Нагрузка</option>';
+  (BACH_DATA.length?'<option value="bach">Бакалавриат</option>':'');
 
 // --- НАГРУЗКА: реальная нагрузка преподавателя по неделям семестра ---
 const DAY_ORD={"ВТОРНИК":0,"ПЯТНИЦА":1,"ПОНЕДЕЛЬНИК":2,"СРЕДА":3,"ЧЕТВЕРГ":4,"СУББОТА":5};
@@ -614,12 +619,18 @@ function renderMag(){
   });
   document.getElementById("count").textContent = `Показано модулей: ${shown} из ${DATA.length}`;
 }
-fLevel.addEventListener("change",()=>{
-  MODE=fLevel.value;
+function switchMode(){
+  MODE = loadOn ? "load" : fLevel.value;
   [fDay,fVenue,fTeach,fDisc].forEach(s=>s.value="");
   setupFilters();
   render();
+}
+btnLoad.addEventListener("click",()=>{
+  loadOn=!loadOn;
+  btnLoad.classList.toggle("on",loadOn);
+  switchMode();
 });
+fLevel.addEventListener("change",switchMode);
 [fDay,fVenue,fTeach,fDisc].forEach(s=>s.addEventListener("change",render));
 render();
 
