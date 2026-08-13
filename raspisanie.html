@@ -142,13 +142,19 @@ const CUSTOM = {
   "ПИИ_ИПкН": {name:"Прикладной ИИ (ИПкН)", online:true, op:"Искусственный интеллект 2025, 2026", tip:[
     "Хранение больших данных и Введение в МО (Python)",
     "Введение в МО (Python) и Продвинутое МО (Python)",
-    "Продвинутое МО (Python) и Глубокое обучение"]}
+    "Продвинутое МО (Python) и Глубокое обучение"]},
+  "ПОХБД":    {name:"Первичная обработка и хранение больших данных", kind:"disc", podr:"ФТМИ"},
+  "ПОХБД_EN": {name:"Первичная обработка и хранение больших данных · EN", kind:"disc", podr:"ФТМИ"}
 };
 // Магистратура · еженедельные онлайн-пары вне модульной сетки
 const MAG_WEEKLY = [
   {name:"Прикладной ИИ · еженедельно", day:"СРЕДА", parity:"Еженедельно · 2–18 нед.",
    weeks:"2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18", venue:"ОНЛАЙН", aud1:"ДИСТ", aud2:"ДИСТ",
-   grid:[{time:"2 · 09:50–11:20", p1:"ПИИ", p2:"ПИИ_ИПкН"}]}
+   grid:[{time:"2 · 09:50–11:20", p1:"ПИИ", p2:"ПИИ_ИПкН"}]},
+  {name:"Первичная обработка и хранение больших данных", day:"ВТОРНИК", parity:"Еженедельно · 10–17 нед.",
+   weeks:"10,11,12,13,14,15,16,17", venue:"БИРЖА", fmt:"ОЧНЫЙ", podr:"ФТМИ", exam:"29.12.2026",
+   aud1:"535", aud2:"—",
+   grid:[{time:"7 · 18:50–20:20", p1:"ПОХБД", p2:""}, {time:"8 · 20:30–22:00", p1:"ПОХБД_EN", p2:""}]}
 ];
 function customIn(raw){ return raw ? raw.split("|").map(s=>s.trim()).filter(k=>CUSTOM[k]) : []; }
 function customOpOf(k){ const c=CUSTOM[k]; return c&&c.op?c.op:null; }
@@ -472,10 +478,11 @@ function renderWeekly(grid){
   MAG_WEEKLY.forEach(m=>{
     if(d && m.day!==d) return;
     if(v && m.venue!==v) return;
+    const cc=x=>{const k=customIn(x);return k.length?cellCustom(k):'<span class="empty">—</span>';};
     const rows=m.grid.map(g=>{
       const tt=g.time.split(" · ");
       return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td>`+
-        `<td>${cellCustom(customIn(g.p1))}</td><td>${cellCustom(customIn(g.p2))}</td></tr>`;
+        `<td>${cc(g.p1)}</td><td>${cc(g.p2)}</td></tr>`;
     }).join("");
     const wks=weeksOf(m.weeks);
     const first=(wks.length && !isNaN(ANCHOR_MS))?fmtDate(weekDate(Math.min(...wks),m.day)):"";
@@ -485,8 +492,10 @@ function renderWeekly(grid){
           <div class="mtop"><span class="mname">${m.name}</span><span class="mday">${m.day} · ${m.parity}</span></div>
           <div class="mmeta">
             <span class="chip venue">📍 ${m.venue}</span>
-            <span class="chip fmt">ОНЛАЙН</span>
+            <span class="chip fmt">${m.fmt||"ОНЛАЙН"}</span>
+            ${m.podr?`<span class="chip">🏛 ${m.podr}</span>`:""}
             ${first?`<span class="chip">📅 первое занятие: ${first}</span>`:""}
+            ${m.exam?`<span class="chip">📝 экзамен: ${m.exam}</span>`:""}
             <span class="chip">недели: ${m.weeks}</span>
           </div>
         </div>
@@ -533,7 +542,7 @@ function weekCards(W){
   MAG_WEEKLY.forEach(m=>{
     if(!weeksOf(m.weeks).includes(W)) return;
     const rows=m.grid.map(g=>timeRow(g,cellB)).join("");
-    const meta=`<span class="chip">Магистратура</span><span class="chip venue">📍 ${m.venue}</span><span class="chip fmt">ОНЛАЙН</span>`;
+    const meta=`<span class="chip">Магистратура</span><span class="chip venue">📍 ${m.venue}</span><span class="chip fmt">${m.fmt||"ОНЛАЙН"}</span>${m.podr?`<span class="chip">🏛 ${m.podr}</span>`:""}`;
     cards.push({off:off(m.day),prog:0,html:weekCard(m.day,fmtDate(weekDate(W,m.day)),m.name,meta,"",
       `<th>Пара</th><th>Поток 1 · ${m.aud1}</th><th>Поток 2 · ${m.aud2}</th>`,rows)});
   });
@@ -662,6 +671,7 @@ function showPop(el,pin){
     const c=CUSTOM[el.dataset.cu];
     if(!c) return;
     let h=`<div class="pf">${c.name}</div>`;
+    if(c.podr) h+=`<div class="pl">Подразделение: <b>${c.podr}</b></div>`;
     if(c.op) h+=`<div class="pl">Описание ОП: <b>${c.op}</b></div>`;
     if(c.tip) h+=`<div class="pl">Наименование дисциплин:</div>`+
       c.tip.map(d=>`<div class="pl">• ${d}</div>`).join("");
