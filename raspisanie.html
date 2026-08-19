@@ -146,8 +146,8 @@ const CUSTOM = {
     "Хранение больших данных и Введение в МО (Python)",
     "Введение в МО (Python) и Продвинутое МО (Python)",
     "Продвинутое МО (Python) и Глубокое обучение"]},
-  "ПОХБД":    {name:"Первичная обработка и хранение больших данных", kind:"disc", podr:"ФТМИ"},
-  "ПОХБД_EN": {name:"Первичная обработка и хранение больших данных · EN", kind:"disc", podr:"ФТМИ"}
+  "ПОХБД":    {name:"Первичная обработка и хранение больших данных", kind:"disc", podr:"ФТМИ", tname:"Синицын Александр Александрович", ttg:"Sannitsa"},
+  "ПОХБД_EN": {name:"Первичная обработка и хранение больших данных · EN", kind:"disc", podr:"ФТМИ", tname:"Синицын Александр Александрович", ttg:"Sannitsa"}
 };
 // Магистратура · еженедельные онлайн-пары вне модульной сетки
 const MAG_WEEKLY = [
@@ -421,7 +421,14 @@ function cellCustom(keys){
     const on=c.online?'<span class="ptea">🌐 Онлайн</span>':'';
     return `<span class="disc"><span class="sname" tabindex="0" data-cu="${k}">${c.name}</span></span>${on}`;
   }).join("");
-  return `<span class="cell"><span class="bar" style="background:var(--accent)"></span><span>${inner}<span class="ptea none">👤 не указан</span></span></span>`;
+  const teas=[];
+  keys.forEach(k=>{const c=CUSTOM[k]; if(c.tname && !teas.some(t=>t.tname===c.tname)) teas.push(c);});
+  const tea = teas.length
+    ? teas.map(c=>c.ttg
+        ? `<span class="ptea has" tabindex="0" data-tn="${c.tname}" data-tg="${c.ttg}">👤 ${shortName(c.tname)}</span>`
+        : `<span class="ptea">👤 ${shortName(c.tname)}</span>`).join(", ")
+    : '<span class="ptea none">👤 не указан</span>';
+  return `<span class="cell"><span class="bar" style="background:var(--accent)"></span><span>${inner}${tea}</span></span>`;
 }
 function cellB(raw){
   const cu=customIn(raw);
