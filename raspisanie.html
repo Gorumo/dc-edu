@@ -193,6 +193,8 @@ function teachKey(s){
 // временно скрытые преподаватели: их пары исключаются из расписания и нагрузки (по фамилии)
 const HIDE_TEACHERS = [];
 function isHiddenTeacher(full){ return !!full && HIDE_TEACHERS.includes(String(full).split(" ")[0]); }
+const NONE_TEACHER = "Не указан";                       // спец-значение фильтра «без преподавателя»
+function noTeacher(s){ return !!s && !teachKey(s); }     // непустая пара без лектора
 function shortName(full){
   const p=full.split(" ");
   return p[0]+" "+p.slice(1).map(w=>w[0]+".").join("");
@@ -274,7 +276,7 @@ function setupFilters(){
   fill(fVenue,uniq(data.map(m=>m.venue)),"Все площадки");
   if(MODE==="mag"){
     lblTeach.textContent="Преподаватель"; lblDisc.textContent="Дисциплина";
-    fill(fTeach,Object.keys(PEOPLE).map(k=>PEOPLE[k].full).filter(f=>!isHiddenTeacher(f)),"Все преподаватели");
+    fill(fTeach,[...Object.keys(PEOPLE).map(k=>PEOPLE[k].full).filter(f=>!isHiddenTeacher(f)), NONE_TEACHER],"Все преподаватели");
     fDisc.innerHTML='<option value="">Все дисциплины</option>'+
       DISCS.map(([v,l])=>`<option value="${v}">${l}</option>`).join("");
     legend.style.display="";
@@ -607,17 +609,19 @@ function render(){
 }
 function renderMag(){
   const d=fDay.value,v=fVenue.value,t=fTeach.value,dc=fDisc.value;
+  const tNone = t===NONE_TEACHER;
+  const matchT = s => tNone ? noTeacher(s) : teaFull(s)===t;
   const grid=document.getElementById("grid");
   grid.innerHTML="";
   let shown=0;
   DATA.forEach(m=>{
     if(d && m.day!==d) return;
     if(v && m.venue!==v) return;
-    if(t && !m.grid.some(g=>teaFull(g.p1)===t||teaFull(g.p2)===t)) return;
+    if(t && !m.grid.some(g=>matchT(g.p1)||matchT(g.p2))) return;
     if(dc && !m.grid.some(g=>discKey(g.p1)===dc||discKey(g.p2)===dc)) return;
     shown++;
     const rows=m.grid.map(g=>{
-      const t1 = t && teaFull(g.p1)===t, t2 = t && teaFull(g.p2)===t;
+      const t1 = t && matchT(g.p1), t2 = t && matchT(g.p2);
       const hl1 = dc && discKey(g.p1)===dc, hl2 = dc && discKey(g.p2)===dc;
       // оставляем только строки, где есть пара выбранного преподавателя / дисциплины
       if(t && !t1 && !t2) return "";
