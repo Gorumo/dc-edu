@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Расписание для лекторов · ВШ ЦК</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#181b22; --card2:#1f232c; --line:#2a2f3a;
+    --txt:#e8eaf0; --muted:#9aa3b2; --accent:#6aa0ff; --accent2:#3bcf8e;
+    --mine:#ffcf47; --mineBg:rgba(255,207,71,.14); --mineLine:rgba(255,207,71,.55);
+    --online:#e0c23b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}
+  header{padding:16px 18px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:20}
+  .h1{font-size:19px;font-weight:700;letter-spacing:.01em}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .toplinks{float:right;font-size:12.5px}
+  .controls{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;margin-top:12px}
+  .ctl{display:flex;flex-direction:column;gap:4px}
+  .ctl label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  select,button{font:inherit}
+  select{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:220px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{background:var(--card);color:var(--muted);border:0;padding:7px 13px;cursor:pointer}
+  .seg button.on{background:var(--accent);color:#0d0f13;font-weight:600}
+  .seg button+button{border-left:1px solid var(--line)}
+  .toggle{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:7px 12px;cursor:pointer}
+  .toggle.on{background:var(--accent2);color:#0d0f13;border-color:var(--accent2);font-weight:600}
+  .btn{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:7px 12px;cursor:pointer}
+  .btn:hover{border-color:var(--accent)}
+  .navbar{display:flex;align-items:center;gap:10px;margin-top:12px}
+  .navbar .lbl{font-weight:600}
+  .navbar .rng{color:var(--muted);font-size:12.5px}
+  .navbar .nowbtn{margin-left:auto}
+  .nav-arrow{flex:0 0 auto;width:40px;text-align:center;padding-left:0;padding-right:0}
+  .navmid{flex:0 0 auto;min-width:330px;text-align:center;white-space:nowrap}
+  .navmid-m{min-width:190px}
+  main{padding:16px 18px 60px;max-width:1280px}
+  .hint{color:var(--muted);font-size:12.5px;margin:2px 0 14px}
+  .mine-count{color:var(--mine);font-weight:600}
+
+  /* Неделя */
+  .days{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+  .day{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .day.today{border-color:var(--accent)}
+  .dhead{padding:10px 13px;background:#15181f;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:8px}
+  .dname{font-weight:700}
+  .ddate{color:var(--muted);font-size:12px;margin-left:auto}
+  .slot{padding:9px 13px;border-bottom:1px solid var(--line)}
+  .slot:last-child{border-bottom:0}
+  .slotrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:5px}
+  .sess{flex:1 1 138px;min-width:0;background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+  .sess.mine{background:var(--mineBg);border-color:var(--mineLine);box-shadow:inset 3px 0 0 var(--mine)}
+  .stime{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .sname{font-weight:600;margin:1px 0 3px}
+  .nm{cursor:pointer;border-bottom:1px dashed rgba(106,160,255,.45);outline:none}
+  .nm:hover,.nm:focus{color:var(--accent)}
+  .steam{font-size:12px;color:var(--muted)}
+  .steam .me{color:var(--mine);font-weight:600}
+  .steam .tn{cursor:pointer;border-bottom:1px dashed rgba(154,163,178,.5);outline:none}
+  .steam .tn.me{border-bottom-color:var(--mineLine)}
+  .steam .tn:hover,.steam .tn:focus{color:var(--accent);border-bottom-color:var(--accent)}
+  .sroom{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:12px;
+    background:var(--card2);border:1px solid var(--line);border-radius:7px;padding:3px 8px;cursor:pointer}
+  .sroom:hover{border-color:var(--accent)}
+  .sroom.online{color:var(--online);cursor:default}
+  .badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:20px;border:1px solid var(--line);color:var(--muted);margin-left:6px}
+  .badge.mag{color:#c9a6ff;border-color:#4a3a6a}
+  .badge.bach{color:#8fd0ff;border-color:#33506a}
+  .empty{color:var(--muted);padding:20px;text-align:center}
+
+  /* Месяц */
+  .month{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .mgrid{display:grid;grid-template-columns:repeat(7,1fr)}
+  .mgrid .wd{background:#15181f;padding:7px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center;border-bottom:1px solid var(--line)}
+  .mcell{min-height:96px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 7px;position:relative}
+  .mcell:nth-child(7n){border-right:0}
+  .mcell.dim{background:#12141a;color:var(--muted)}
+  .mcell.today{outline:2px solid var(--accent);outline-offset:-2px}
+  .mcell .dn{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .mcell.has{cursor:pointer}
+  .mcell.has:hover{background:#1c202a}
+  .chip{display:block;margin-top:3px;font-size:10.5px;padding:2px 5px;border-radius:5px;background:var(--card2);border:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip.mine{background:var(--mineBg);border-color:var(--mineLine);color:var(--mine)}
+  .more{font-size:10px;color:var(--muted);margin-top:2px}
+
+  /* Мои пары */
+  .mylist{display:flex;flex-direction:column;gap:8px}
+  .myrow{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;
+    background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 13px}
+  .myrow .t{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;text-align:center;line-height:1.25}
+  .myrow .t span{color:var(--muted);font-size:10.5px}
+  .mymonth{margin:18px 0 8px;font-weight:700;color:var(--accent);font-size:13px;text-transform:uppercase;letter-spacing:.05em}
+  .myday{display:flex;align-items:baseline;gap:10px;margin:10px 0 6px;font-weight:600;font-size:13.5px;
+    padding-bottom:4px;border-bottom:1px solid var(--line)}
+  .myday .mdc{color:var(--muted);font-size:11.5px;font-weight:400}
+
+  /* Поповер аудитории */
+  #pop{position:fixed;z-index:60;max-width:340px;background:var(--card2);border:1px solid var(--accent);
+    border-radius:12px;padding:13px 15px;box-shadow:0 12px 40px rgba(0,0,0,.6);display:none}
+  #pop.on{display:block}
+  #pop .pt{font-weight:700;margin-bottom:4px}
+  #pop .pa{color:var(--muted);font-size:12.5px;margin-bottom:8px}
+  #pop .row{font-size:12.5px;margin-top:6px}
+  #pop .row b{color:var(--txt)}
+  #pop .own{display:inline-block;font-size:10px;padding:1px 7px;border-radius:20px;border:1px solid var(--line);color:var(--muted);margin-left:6px}
+  #pop .warn{color:var(--online)}
+  #pop a{word-break:break-all}
+  #pop .close{position:absolute;top:8px;right:11px;color:var(--muted);cursor:pointer;font-size:16px;line-height:1}
+
+</style>
+</head>
+<body>
+<header>
+  <div class="toplinks"><a href="raspisanie.html">← Общее расписание</a></div>
+  <div class="h1">Расписание для лекторов</div>
+  <div class="sub">ВШ ЦК ОУМ · выберите себя, чтобы подсветить свои пары. Остальные пары видны — можно найти коллег на площадке.</div>
+
+  <div class="controls">
+    <div class="ctl">
+      <label>Я — преподаватель</label>
+      <select id="fMe"></select>
+    </div>
+    <div class="ctl">
+      <label>Вид</label>
+      <div class="seg" id="segView">
+        <button data-v="week" class="on">Неделя</button>
+        <button data-v="month">Месяц</button>
+        <button data-v="mine">Все мои пары</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label>Фильтр</label>
+      <button class="toggle" id="tOnly">Только моё расписание</button>
+    </div>
+  </div>
+
+  <div class="navbar" id="navbar"></div>
+</header>
+
+<main>
+  <div class="hint" id="hint"></div>
+  <div id="view"></div>
+</main>
+
+<div id="pop"></div>
+
+<script src="schedule-data.js"></script>
+<script>
+/* ---------- Хелперы (перенесены из raspisanie.html, данные — общие) ---------- */
+const WD_OFF={"ПОНЕДЕЛЬНИК":0,"ВТОРНИК":1,"СРЕДА":2,"ЧЕТВЕРГ":3,"ПЯТНИЦА":4,"СУББОТА":5,"ВОСКРЕСЕНЬЕ":6};
+const IDX_DAY={0:"ВОСКРЕСЕНЬЕ",1:"ПОНЕДЕЛЬНИК",2:"ВТОРНИК",3:"СРЕДА",4:"ЧЕТВЕРГ",5:"ПЯТНИЦА",6:"СУББОТА"};
+const DAY_ORDER=["ПОНЕДЕЛЬНИК","ВТОРНИК","СРЕДА","ЧЕТВЕРГ","ПЯТНИЦА","СУББОТА","ВОСКРЕСЕНЬЕ"];
+const DAY_NICE={"ПОНЕДЕЛЬНИК":"Понедельник","ВТОРНИК":"Вторник","СРЕДА":"Среда","ЧЕТВЕРГ":"Четверг","ПЯТНИЦА":"Пятница","СУББОТА":"Суббота","ВОСКРЕСЕНЬЕ":"Воскресенье"};
+const DAY_SHORT={"ПОНЕДЕЛЬНИК":"Пн","ВТОРНИК":"Вт","СРЕДА":"Ср","ЧЕТВЕРГ":"Чт","ПЯТНИЦА":"Пт","СУББОТА":"Сб","ВОСКРЕСЕНЬЕ":"Вс"};
+const RU_MONTH=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+const RU_MONTH_NOM=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+const DAY_MS=86400000;
+
+function weekDate(week, dayName){ return new Date(ANCHOR_MS + ((week-1)*7 + (WD_OFF[dayName]||0))*DAY_MS); }
+function dateToWeek(ddmmyyyy){
+  const m=String(ddmmyyyy).match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if(!m || isNaN(ANCHOR_MS)) return null;
+  const ms=Date.parse(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`);
+  return Math.floor((ms-ANCHOR_MS)/(7*DAY_MS))+1;
+}
+function weekOfMs(ms){ return Math.floor((ms-ANCHOR_MS)/(7*DAY_MS))+1; }
+function weeksOf(str){ return (String(str).match(/\d+/g)||[]).map(Number); }
+function fmtDate(d){ const p=n=>String(n).padStart(2,"0"); return p(d.getUTCDate())+"."+p(d.getUTCMonth()+1)+"."+d.getUTCFullYear(); }
+function fmtDay(d){ return d.getUTCDate()+" "+RU_MONTH[d.getUTCMonth()]; }
+function uniq(a){ return [...new Set(a.filter(Boolean))]; }
+
+function shortName(full){ const p=String(full).split(" "); return p[0]+" "+p.slice(1).map(w=>w[0]+".").join(""); }
+function prettyName(s){
+  if(!s) return s;
+  let out=s.replace("ИИ-м: НиТ","ИИ Прод").replace("КультИИ:","КультИИ");
+  const mod=out.match(/\((?:Мод|Mod) (\d+)\)/), tail=out.match(/(\d+)\.(\d+)\s*$/);
+  if(mod&&tail){ const on=/\bON\b/.test(out)?" Онлайн":""; const head=out.slice(0,out.search(/\((?:Мод|Mod)/)).trim(); out=`${head} ${mod[1]}.${tail[2]}${on}`; }
+  return out;
+}
+function resolveAud(s, aud){
+  if(!aud || !aud.includes("/")) return aud;
+  const parts=aud.split("/").map(x=>x.trim());
+  const dist=parts.find(x=>/ДИСТ/i.test(x)), room=parts.find(x=>!/ДИСТ/i.test(x));
+  return /\bON\b/.test(s) ? (dist||aud) : (room||aud);
+}
+const STREAM_RE=/ИвИИ\s+\d+\s+\(ВШ ЦК1\)\s+\S+\s+\d+\.\d+/g;
+function streamsIn(s){ return s ? (s.match(STREAM_RE)||[]) : []; }
+function shortStream(sid){ return sid.replace(/\s*\(ВШ ЦК1\)\s*/," · "); }
+function customIn(raw){ return raw ? raw.split("|").map(s=>s.trim()).filter(k=>CUSTOM[k]) : []; }
+function teachKey(s){
+  if(s && TEACHERS[s]) return TEACHERS[s];
+  if(s){ for(const [sub,k] of TEACHER_RULES){ if(s.includes(sub)) return k; } }
+  return null;
+}
+function magTeachers(s){ const k=teachKey(s); return (k&&PEOPLE[k])?[{full:PEOPLE[k].full,tg:PEOPLE[k].tg}]:[]; }
+
+/* ---------- Сборка всех занятий семестра ---------- */
+const SESSIONS=[];
+function pushSess(o){
+  o.online = o.venue==="ОНЛАЙН" || /ДИСТ/i.test(o.aud||"");
+  o.slotNum = parseInt(o.slot,10)||0;
+  o.id = SESSIONS.length;
+  SESSIONS.push(o);
+}
+// Магистратура · модули (каждая пара идёт 8 недель подряд от старта)
+DATA.forEach(m=>{
+  const sw=dateToWeek(m.date); if(sw==null) return;
+  for(let off=0; off<8; off++){
+    const w=sw+off;
+    m.grid.forEach(g=>{
+      [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
+        const s=g[key]; if(!s) return;
+        pushSess({week:w,day:m.day,slot:g.time,name:prettyName(s),teachers:magTeachers(s),
+          venue:m.venue,aud:resolveAud(s,aud),level:"mag",podr:MAG_STREAMS[s]||"",op:"",mod:m.name,
+          cell:s+"|"+w+"|"+m.day+"|"+g.time});
+      });
+    });
+  }
+});
+// Магистратура · еженедельные пары вне сетки (+ экзамен)
+MAG_WEEKLY.forEach(m=>{
+  weeksOf(m.weeks).forEach(w=>{
+    m.grid.forEach(g=>{
+      [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
+        const s=g[key]; if(!s) return;
+        customIn(s).forEach(k=>{ const c=CUSTOM[k];
+          pushSess({week:w,day:m.day,slot:g.time,name:c.name+(c.stream?` · ${c.stream}`:""),
+            teachers:c.tname?[{full:c.tname,tg:c.ttg}]:[],venue:m.venue,aud:resolveAud(s,aud),level:"mag",podr:c.podr||"",op:c.op||"",
+            cell:s+"|"+w+"|"+m.day+"|"+g.time});
+        });
+      });
+    });
+  });
+  if(m.exam){ const ew=dateToWeek(m.exam); const c0=CUSTOM[customIn(m.grid[0].p1)[0]]||{};
+    if(ew!=null) pushSess({week:ew,day:m.day,slot:"— Экзамен",name:"Экзамен · "+m.name,
+      teachers:c0.tname?[{full:c0.tname,tg:c0.ttg}]:[],venue:m.venue,aud:m.aud1,level:"mag",exam:true,podr:c0.podr||"",op:c0.op||"",
+      cell:"exam|"+m.name+"|"+ew});
+  }
+});
+// Бакалавриат · волны (пара идёт по неделям своей волны)
+BACH_DATA.forEach(m=>{
+  weeksOf(m.weeks).forEach(w=>{
+    m.grid.forEach(g=>{
+      [["p1",m.aud1],["p2",m.aud2]].forEach(([key,aud])=>{
+        const s=g[key]; if(!s) return;
+        const cellKey=s+"|"+w+"|"+m.day+"|"+g.time;
+        streamsIn(s).forEach(sid=>{ const st=STREAMS[sid]||{};
+          pushSess({week:w,day:m.day,slot:g.time,name:shortStream(sid),
+            teachers:st.tname?[{full:st.tname,tg:st.ttg}]:[],venue:m.venue,aud:resolveAud(s,aud),level:"bach",podr:st.podr||"",op:st.op||"",cell:cellKey});
+        });
+        customIn(s).forEach(k=>{ const c=CUSTOM[k];
+          pushSess({week:w,day:m.day,slot:g.time,name:c.name+(c.stream?` · ${c.stream}`:""),
+            teachers:c.tname?[{full:c.tname,tg:c.ttg}]:[],venue:m.venue,aud:resolveAud(s,aud),level:"bach",podr:c.podr||"",op:c.op||"",cell:cellKey});
+        });
+      });
+    });
+  });
+});
+
+// Индекс по (неделя|день) и список преподавателей
+const SESS_BY={};
+SESSIONS.forEach(s=>{ (SESS_BY[s.week+"|"+s.day]=SESS_BY[s.week+"|"+s.day]||[]).push(s); });
+const WEEKS_WITH=uniq(SESSIONS.map(s=>s.week)).sort((a,b)=>a-b);
+const WMIN=WEEKS_WITH[0], WMAX=WEEKS_WITH[WEEKS_WITH.length-1];
+const TEACHERS_ALL=uniq(SESSIONS.flatMap(s=>s.teachers.map(t=>t.full))).sort((a,b)=>a.localeCompare(b,"ru"));
+
+/* ---------- Доступ к аудитории ---------- */
+function roomNumber(aud){ const m=String(aud).match(/\d{3,4}/); return m?m[0]:null; }
+function roomAccess(level,venue,room){
+  return ROOM_ACCESS[`${level}|${venue}|${room}`] || ROOM_ACCESS[`${level}|${venue}`] || null;
+}
+
+/* ---------- Состояние ---------- */
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v;}catch(e){return d;}},
+          set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
+let me=LS.get("lektor.me","");
+if(me && !TEACHERS_ALL.includes(me)) me="";
+let onlyMine=LS.get("lektor.only","0")==="1";
+let view=LS.get("lektor.view","week");
+function defaultWeek(){ const tw=weekOfMs(Date.now()); return WEEKS_WITH.find(w=>w>=tw) ?? WMAX; }
+let curWeek=defaultWeek();
+let curMonth=firstOfMonthFor(curWeek);   // Date (UTC, 1-е число)
+
+function firstOfMonthFor(week){ const d=weekDate(week,"СРЕДА"); return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1)); }
+function isMine(s){ return me && s.teachers.some(t=>t.full===me); }
+
+/* ---------- DOM ---------- */
+const $=id=>document.getElementById(id);
+function esc(x){ return String(x).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function initControls(){
+  $("fMe").innerHTML='<option value="">— выберите себя —</option>'+
+    TEACHERS_ALL.map(t=>`<option value="${esc(t)}"${t===me?" selected":""}>${esc(t)}</option>`).join("");
+  $("fMe").onchange=e=>{ me=e.target.value; LS.set("lektor.me",me); if(!me&&(view==="mine"||onlyMine)){/*keep*/} render(); };
+  [...$("segView").children].forEach(b=>b.onclick=()=>{ view=b.dataset.v; LS.set("lektor.view",view); syncSeg(); render(); });
+  const t=$("tOnly"); const syncT=()=>t.classList.toggle("on",onlyMine);
+  t.onclick=()=>{ onlyMine=!onlyMine; LS.set("lektor.only",onlyMine?"1":"0"); syncT(); render(); }; syncT();
+  syncSeg();
+}
+function syncSeg(){ [...$("segView").children].forEach(b=>b.classList.toggle("on",b.dataset.v===view)); }
+
+/* ---------- Рендер: диспетчер ---------- */
+function render(){
+  document.getElementById("pop").classList.remove("on");
+  if((view==="mine"||onlyMine) && !me){ $("hint").innerHTML="Выберите себя в списке выше, чтобы увидеть свои пары."; }
+  else $("hint").innerHTML="";
+  if(view==="week")  return renderWeek();
+  if(view==="month") return renderMonth();
+  if(view==="mine")  return renderMine();
+}
+
+/* ---------- Неделя ---------- */
+function renderNav(){
+  const nb=$("navbar");
+  if(view==="week"){
+    const a=weekDate(curWeek,"ПОНЕДЕЛЬНИК"), b=weekDate(curWeek,"СУББОТА");
+    const par=(curWeek%2===1)?"нечётная":"чётная";
+    nb.innerHTML=`<button class="btn nav-arrow" id="pv">‹</button>
+      <span class="navmid"><span class="lbl">Неделя ${curWeek}</span> <span class="rng">${fmtDay(a)} – ${fmtDay(b)} · ${par}</span></span>
+      <button class="btn nav-arrow" id="nx">›</button>
+      <button class="btn nowbtn" id="now">Текущая неделя</button>`;
+    $("pv").onclick=()=>{ curWeek=Math.max(WMIN,curWeek-1); render(); };
+    $("nx").onclick=()=>{ curWeek=Math.min(WMAX,curWeek+1); render(); };
+    $("now").onclick=()=>{ curWeek=defaultWeek(); render(); };
+    $("pv").disabled=curWeek<=WMIN; $("nx").disabled=curWeek>=WMAX;
+  } else if(view==="month"){
+    nb.innerHTML=`<button class="btn nav-arrow" id="pm">‹</button>
+      <span class="navmid navmid-m"><span class="lbl">${RU_MONTH_NOM[curMonth.getUTCMonth()]} ${curMonth.getUTCFullYear()}</span></span>
+      <button class="btn nav-arrow" id="nm">›</button>
+      <button class="btn nowbtn" id="now">Текущий месяц</button>`;
+    $("pm").onclick=()=>{ curMonth=new Date(Date.UTC(curMonth.getUTCFullYear(),curMonth.getUTCMonth()-1,1)); render(); };
+    $("nm").onclick=()=>{ curMonth=new Date(Date.UTC(curMonth.getUTCFullYear(),curMonth.getUTCMonth()+1,1)); render(); };
+    $("now").onclick=()=>{ curMonth=firstOfMonthFor(defaultWeek()); render(); };
+  } else nb.innerHTML="";
+}
+
+function roomChip(s){
+  if(s.online) return `<span class="sroom online">🌐 Дистанционно</span>`;
+  const room=roomNumber(s.aud);
+  if(!room) return `<span class="sroom online">📍 ${esc(s.venue)} · ${esc(s.aud)}</span>`;
+  return `<span class="sroom" data-room="${esc(room)}" data-venue="${esc(s.venue)}" data-level="${s.level}" tabindex="0">📍 ${esc(s.venue)} · ${esc(room)}</span>`;
+}
+function teacherLineArr(teachers){
+  if(!teachers.length) return `<span class="steam">👤 не указан</span>`;
+  return `<span class="steam">👤 `+teachers.map(t=>{
+    const mine=me&&t.full===me;
+    if(t.tg) return `<span class="tn${mine?" me":""}" data-tn="${esc(t.full)}" data-tg="${esc(t.tg)}" tabindex="0">${esc(shortName(t.full))}</span>`;
+    return `<span class="${mine?'me':''}">${esc(shortName(t.full))}</span>`;
+  }).join(", ")+`</span>`;
+}
+function teacherLine(s){ return teacherLineArr(s.teachers); }
+function unionTeachers(group){ const t=[]; group.forEach(s=>s.teachers.forEach(x=>{ if(!t.some(y=>y.full===x.full)) t.push(x); })); return t; }
+// объединяем занятия из одной ячейки (склеенные потоки) в один блок
+function groupByCell(list){
+  const map=new Map(), order=[];
+  list.forEach(s=>{ const k=s.cell||("id"+s.id); if(!map.has(k)){map.set(k,[]);order.push(k);} map.get(k).push(s); });
+  return order.map(k=>map.get(k));
+}
+function namesHtml(group){ return group.map(s=>`<span class="nm" data-sid="${s.id}" tabindex="0">${esc(s.name)}</span>`).join(", "); }
+function cardMini(group){
+  const s0=group[0], mine=me&&group.some(isMine);
+  return `<div class="sess${mine?" mine":""}">
+    <div class="sname">${namesHtml(group)}<span class="badge ${s0.level}">${s0.level==="mag"?"Маг":"Бак"}</span></div>
+    ${teacherLineArr(unionTeachers(group))}
+    <div>${roomChip(s0)}</div>
+  </div>`;
+}
+
+function renderWeek(){
+  renderNav();
+  const wrap=$("view"); let html='<div class="days">'; let shownDays=0;
+  DAY_ORDER.forEach(day=>{
+    let list=(SESS_BY[curWeek+"|"+day]||[]).slice();
+    if(onlyMine) list=list.filter(isMine);
+    if(!list.length) return;
+    shownDays++;
+    // параллельные пары группируем по временно́му слоту → в один ряд
+    const bySlot={};
+    list.forEach(s=>{ (bySlot[s.slot]=bySlot[s.slot]||[]).push(s); });
+    const slots=Object.keys(bySlot).sort((a,b)=>(parseInt(a,10)||0)-(parseInt(b,10)||0));
+    const d=weekDate(curWeek,day);
+    const isToday=fmtDate(d)===fmtDate(new Date(Date.now()-Date.now()%DAY_MS));
+    html+=`<div class="day${isToday?" today":""}"><div class="dhead"><span class="dname">${DAY_NICE[day]}</span><span class="ddate">${fmtDate(d)}</span></div>`;
+    slots.forEach(slot=>{
+      const tt=slot.split(" · ");
+      html+=`<div class="slot"><div class="stime">${esc(tt[0])}${tt[1]?" · "+esc(tt[1]):""}</div>`+
+            `<div class="slotrow">`+groupByCell(bySlot[slot]).map(cardMini).join("")+`</div></div>`;
+    });
+    html+=`</div>`;
+  });
+  html+='</div>';
+  if(!shownDays) html=`<div class="empty">${onlyMine?"На этой неделе у вас нет пар.":"На этой неделе занятий нет."}</div>`;
+  wrap.innerHTML=html;
+  if(me){ const cnt=(WEEKS_WITH.includes(curWeek)?SESSIONS.filter(s=>s.week===curWeek&&isMine(s)).length:0);
+    $("hint").innerHTML=`Ваших пар на этой неделе: <span class="mine-count">${cnt}</span>`; }
+  bindRooms();
+}
+
+/* ---------- Месяц ---------- */
+function renderMonth(){
+  renderNav();
+  const y=curMonth.getUTCFullYear(), mo=curMonth.getUTCMonth();
+  const first=new Date(Date.UTC(y,mo,1));
+  const startOff=(first.getUTCDay()+6)%7;           // сколько дней до понедельника
+  const start=new Date(first.getTime()-startOff*DAY_MS);
+  const todayStr=fmtDate(new Date(Date.now()-Date.now()%DAY_MS));
+  let html='<div class="month"><div class="mgrid">'+
+    ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"].map(w=>`<div class="wd">${w}</div>`).join("");
+  for(let i=0;i<42;i++){
+    const d=new Date(start.getTime()+i*DAY_MS);
+    const inMonth=d.getUTCMonth()===mo;
+    const dayName=IDX_DAY[d.getUTCDay()];
+    const w=weekOfMs(d.getTime());
+    let list=(SESS_BY[w+"|"+dayName]||[]).slice();
+    if(onlyMine) list=list.filter(isMine);
+    const groups=groupByCell(list).sort((a,b)=>a[0].slotNum-b[0].slotNum);
+    const has=groups.length>0;
+    const cls=["mcell",inMonth?"":"dim",has&&inMonth?"has":"",fmtDate(d)===todayStr?"today":""].filter(Boolean).join(" ");
+    let inner=`<div class="dn">${d.getUTCDate()}</div>`;
+    if(inMonth && has){
+      const show=groups.slice(0,3).map(g=>{ const s=g[0]; const mine=me&&g.some(isMine);
+        return `<span class="chip${mine?" mine":""}">${esc((s.slot.split(" ")[0])+" "+shortNameOf(s))}</span>`;
+      }).join("");
+      inner+=show+(groups.length>3?`<div class="more">+${groups.length-3}</div>`:"");
+    }
+    html+=`<div class="${cls}"${(inMonth&&has)?` data-week="${w}"`:""}>${inner}</div>`;
+  }
+  html+='</div></div><div class="hint" style="margin-top:10px">Клик по дню откроет эту неделю. '+
+        (me?`Ваши пары подсвечены жёлтым.`:`Выберите себя, чтобы подсветить свои пары.`)+'</div>';
+  $("view").innerHTML=html;
+  document.querySelectorAll(".mcell.has").forEach(c=>c.onclick=()=>{ curWeek=+c.dataset.week; view="week"; LS.set("lektor.view","week"); syncSeg(); render(); });
+}
+function shortNameOf(s){ const n=s.name.replace(/ Онлайн$/,""); return n.length>14?n.slice(0,13)+"…":n; }
+
+/* ---------- Все мои пары ---------- */
+function renderMine(){
+  $("navbar").innerHTML="";
+  if(!me){ $("view").innerHTML=`<div class="empty">Выберите себя в списке, чтобы увидеть все свои пары за семестр.</div>`; return; }
+  const groups=groupByCell(SESSIONS.filter(isMine))
+    .map(g=>({g,d:weekDate(g[0].week,g[0].day),sn:g[0].slotNum}))
+    .sort((a,b)=> (a.d-b.d) || (a.sn-b.sn));
+  if(!groups.length){ $("view").innerHTML=`<div class="empty">Пары для «${esc(me)}» не найдены.</div>`; return; }
+  let html=`<div class="hint">Всего занятий за семестр: <span class="mine-count">${groups.length}</span></div>`;
+  let curMo=null, curDay=null, open=false;
+  groups.forEach(({g,d})=>{
+    const s0=g[0];
+    const moKey=d.getUTCFullYear()+"-"+d.getUTCMonth();
+    if(moKey!==curMo){ curMo=moKey; if(open){html+=`</div>`;open=false;} curDay=null;
+      html+=`<div class="mymonth">${RU_MONTH_NOM[d.getUTCMonth()]} ${d.getUTCFullYear()}</div>`; }
+    const dayKey=fmtDate(d);
+    if(dayKey!==curDay){ curDay=dayKey; if(open){html+=`</div>`;}
+      const cnt=groups.filter(x=>fmtDate(x.d)===dayKey).length;
+      html+=`<div class="myday"><span>${DAY_NICE[s0.day]}, ${fmtDate(d)}</span><span class="mdc">${cnt} ${cnt===1?"занятие":(cnt<5?"занятия":"занятий")}</span></div><div class="mylist">`; open=true; }
+    const tt=s0.slot.split(" · ");
+    html+=`<div class="myrow">
+      <div class="t"><b>${esc(tt[0])}</b>${tt[1]?`<br><span>${esc(tt[1])}</span>`:""}</div>
+      <div><div class="sname" style="margin:0">${namesHtml(g)}<span class="badge ${s0.level}">${s0.level==="mag"?"Маг":"Бак"}</span></div>${teacherLineArr(unionTeachers(g))}</div>
+      <div>${roomChip(s0)}</div>
+    </div>`;
+  });
+  if(open) html+=`</div>`;
+  $("view").innerHTML=html;
+  bindRooms();
+}
+
+/* ---------- Поповеры ---------- */
+function bindRooms(){
+  document.querySelectorAll(".sroom[data-room]").forEach(el=>{
+    el.onclick=ev=>{ ev.stopPropagation(); showRoom(el); };
+    el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); showRoom(el);} };
+  });
+  document.querySelectorAll(".nm[data-sid]").forEach(el=>{
+    el.onclick=ev=>{ ev.stopPropagation(); showInfo(el); };
+    el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); showInfo(el);} };
+  });
+  document.querySelectorAll(".tn[data-tg]").forEach(el=>{
+    el.onclick=ev=>{ ev.stopPropagation(); showTeacher(el); };
+    el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); showTeacher(el);} };
+  });
+}
+function showTeacher(el){
+  const pop=$("pop");
+  pop.innerHTML=`<span class="close" id="pclose">×</span>
+    <div class="pt">${esc(el.dataset.tn)}</div>
+    <div class="row"><a href="https://t.me/${esc(el.dataset.tg)}" target="_blank">@${esc(el.dataset.tg)}</a></div>`;
+  popAt(pop,el);
+}
+function popAt(pop,el){
+  pop.classList.add("on");
+  const r=el.getBoundingClientRect(), pw=Math.min(340,window.innerWidth-20);
+  let left=Math.min(r.left, window.innerWidth-pw-10);
+  let top=r.bottom+8; if(top+180>window.innerHeight) top=Math.max(10,r.top-190);
+  pop.style.left=Math.max(10,left)+"px"; pop.style.top=top+"px";
+  const c=$("pclose"); if(c) c.onclick=()=>pop.classList.remove("on");
+}
+function showInfo(el){
+  const s=SESSIONS[+el.dataset.sid]; if(!s) return;
+  const pop=$("pop");
+  let h=`<span class="close" id="pclose">×</span>
+    <div class="pt">${esc(s.name)} <span class="own">${s.level==="mag"?"Магистратура":"Бакалавриат"}</span></div>`;
+  if(s.op)   h+=`<div class="row">ОП: <b>${esc(s.op)}</b></div>`;
+  if(s.mod)  h+=`<div class="row">Модуль: <b>${esc(s.mod)}</b></div>`;
+  if(s.podr) h+=`<div class="row">Подразделение: <b>${esc(s.podr)}</b></div>`;
+  if(!s.op && !s.podr && !s.mod) h+=`<div class="row" style="color:var(--muted)">Данных о подразделении нет.</div>`;
+  if(s.teachers.length) h+=`<div class="row" style="color:var(--muted)">Преподаватель: ${esc(s.teachers.map(t=>t.full).join(", "))}</div>`;
+  pop.innerHTML=h; popAt(pop,el);
+}
+function showRoom(el){
+  const room=el.dataset.room, venue=el.dataset.venue, level=el.dataset.level;
+  const info=roomAccess(level,venue,room);
+  const pop=$("pop");
+  let h=`<span class="close" id="pclose">×</span>
+    <div class="pt">${esc(venue)} · ауд. ${esc(room)} <span class="own">${info?esc(info.owner):"—"}</span></div>
+    <div class="pa">${esc(VENUE_ADDR[venue]||"")}</div>`;
+  if(info){
+    h+=`<div class="row">${esc(info.note)}</div>`;
+    if(info.contact){
+      const c=info.contact;
+      h+=`<div class="row"><b>${esc(c.name)}</b>`+
+         (c.tg?` · <a href="https://t.me/${esc(c.tg)}" target="_blank">@${esc(c.tg)}</a>`:"")+
+         (c.email?` · <a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`:"")+`</div>`;
+    }
+  } else h+=`<div class="row">Уточните доступ у ОПС.</div>`;
+  h+=`<div class="row" style="color:var(--muted)">ОПС: <b>${esc(OPS_CONTACT.phone)}</b></div>`;
+  pop.innerHTML=h; pop.classList.add("on");
+  const r=el.getBoundingClientRect();
+  const pw=Math.min(340,window.innerWidth-20);
+  let left=Math.min(r.left, window.innerWidth-pw-10);
+  let top=r.bottom+8; if(top+180>window.innerHeight) top=Math.max(10,r.top-190);
+  pop.style.left=Math.max(10,left)+"px"; pop.style.top=top+"px";
+  $("pclose").onclick=()=>pop.classList.remove("on");
+}
+document.addEventListener("click",e=>{ const p=$("pop"); if(p.classList.contains("on") && !p.contains(e.target) && !e.target.closest(".sroom") && !e.target.closest(".nm") && !e.target.closest(".tn")) p.classList.remove("on"); });
+window.addEventListener("resize",()=>$("pop").classList.remove("on"));
+
+/* ---------- Старт ---------- */
+initControls();
+render();
+</script>
+</body>
+</html>
