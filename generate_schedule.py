@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Генератор HTML-расписания (ВШ ЦК ОУМ, маги 2026-2027).
+⚠️ DEPRECATED — этот генератор больше не используется.
 
-Как пользоваться:
-  1. Правишь данные в блоке DATA / PEOPLE / TEACHERS ниже.
-  2. Запускаешь:  python generate_schedule.py
-  3. Рядом появляется файл raspisanie.html — открываешь в браузере.
+Источник правды теперь — schedule-data.js (правится вручную; подключается
+и в raspisanie.html, и в lektoram.html). Данные внутри этого файла
+(DATA / PEOPLE / TEACHERS) устарели и разошлись с schedule-data.js, поэтому
+запуск без --force намеренно завершается с ошибкой, чтобы случайно не
+перезатереть ручные правки в raspisanie.html.
 
-  Чтобы сразу выложить расписание на GitHub, добавь флаг:
-     python generate_schedule.py --publish
+Правь расписание прямо в schedule-data.js.
 
-Зависимостей нет — нужен только Python 3.
+Файл оставлен как исторический референс раскладки Google-таблиц. Если
+осознанно нужно сгенерировать HTML по-старому (со стиранием ручных правок):
+     python generate_schedule.py --force            # + --publish при желании
 """
 
 import csv
@@ -884,7 +886,25 @@ def publish():
     subprocess.run(["bash", str(script)], check=True)
 
 
+DEPRECATION_NOTICE = """\
+╔══════════════════════════════════════════════════════════════════════════╗
+║  ⚠️  generate_schedule.py БОЛЬШЕ НЕ ИСПОЛЬЗУЕТСЯ (DEPRECATED)             ║
+║                                                                            ║
+║  Источник правды теперь — schedule-data.js (правится вручную).             ║
+║  Данные внутри этого генератора (DATA / PEOPLE / TEACHERS) УСТАРЕЛИ и      ║
+║  разошлись с schedule-data.js. Запуск ПЕРЕЗАТРЁТ raspisanie.html и вернёт  ║
+║  инлайн-данные, стерев все ручные правки.                                  ║
+║                                                                            ║
+║  Правь расписание прямо в schedule-data.js.                                ║
+║  Если действительно нужно сгенерировать заново — запусти с --force.        ║
+╚══════════════════════════════════════════════════════════════════════════╝"""
+
+
 def main():
+    if "--force" not in sys.argv[1:]:
+        print(DEPRECATION_NOTICE, file=sys.stderr)
+        sys.exit(1)
+
     html = build_html()
     out = Path(OUTPUT)
     out.write_text(html, encoding="utf-8")
