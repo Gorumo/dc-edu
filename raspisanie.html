@@ -83,6 +83,15 @@
     font-size:11.5px;color:var(--accent);cursor:pointer;display:inline-block;user-select:none}
   #pop .pclose:hover{text-decoration:underline}
   .bar{width:4px;align-self:stretch;border-radius:3px;flex:none;margin-top:1px}
+  .bkp{color:#ffcf47;background:rgba(255,207,71,.14);border:1px solid rgba(255,207,71,.45);
+    border-radius:6px;padding:1px 8px;display:inline-block;line-height:1.5;font-weight:600}
+  .bkp a{color:#ffcf47;text-decoration:none}
+  .cwho{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+  .cman{color:var(--accent)}
+  .cman a{color:var(--accent);text-decoration:none}
+  tr.bkprow td{background:rgba(255,207,71,.055)}
+  tr.bkprow td.time b{color:#ffcf47}
+  .mod.trk .mhead{background:linear-gradient(135deg,#26303f,#1b2029)}
   .empty{color:#4a505c}
   .count{font-size:12px;color:var(--muted);margin-left:auto}
   @media(max-width:560px){main{grid-template-columns:1fr;padding:14px}header{padding:16px}}
@@ -569,50 +578,87 @@ function render(){
 }
 const CONS_DAY_ORD={"Понедельник":1,"Вторник":2,"Среда":3,"Четверг":4,"Пятница":5,"Суббота":6,"Воскресенье":7};
 function slotStart(t){ const m=String(t).match(/(\d{1,2}):(\d{2})/); return m?(+m[1]*60 + +m[2]):9999; }
-function consWho(p){
-  const name=p.name || `@${p.tg}`;
-  return p.tg
-    ? `<a href="https://t.me/${p.tg}" target="_blank" style="color:var(--accent);text-decoration:none">${name}</a>`
-    : name;
+// «Фамилия Имя Отчество» -> «Фамилия И. О.» (полное ФИО остаётся в title)
+function shortFio(n){
+  const w=String(n).trim().split(/\s+/);
+  return w.length>=3 ? `${w[0]} ${w[1][0]}. ${w[2][0]}.` : n;
+}
+function consWho(p, backup){
+  const name=p.name ? shortFio(p.name) : `@${p.tg}`;
+  const ttl=p.name ? `${p.name}${p.tg?` · @${p.tg}`:""}` : `@${p.tg}`;
+  const inner = p.tg
+    ? `<a href="https://t.me/${p.tg}" target="_blank" title="${ttl}">${name}</a>`
+    : `<span title="${ttl}">${name}</span>`;
+  return backup
+    ? `<span class="bkp">${inner} · запасной</span>`
+    : `<span class="cman">${inner}</span>`;
+}
+// деление программы на направления (track): «База», «Продвинутый» и т.п.
+function consGroups(list){
+  const by={}, order=[];
+  list.forEach(p=>{ const k=p.track||""; if(!(k in by)){ by[k]=[]; order.push(k); } by[k].push(p); });
+  return order.map(k=>({track:k, people:by[k]}));
+}
+function consDayCards(people){
+  // разворот: день -> слот (по времени начала) -> кто доступен
+  const days={}; let main=0, bkp=0;
+  people.forEach(p=>(p.slots||[]).forEach(([d,t,flag])=>{
+    const backup = flag==="backup";
+    const day=days[d]=(days[d]||{});
+    const sk=slotStart(t);
+    const slot=day[sk]=(day[sk]||{label:t,people:[]});
+    if(/[–-]/.test(t) && !/[–-]/.test(slot.label)) slot.label=t;  // предпочитаем полный интервал
+    slot.people.push({p,backup});
+    backup ? bkp++ : main++;
+  }));
+  const html = Object.keys(days).sort((a,b)=>(CONS_DAY_ORD[a]||9)-(CONS_DAY_ORD[b]||9)).map(d=>{
+    const slots=days[d];
+    const rows=Object.keys(slots).map(Number).sort((a,b)=>a-b).map(sk=>{
+      const s=slots[sk];
+      const reg=s.people.filter(x=>!x.backup), bk=s.people.filter(x=>x.backup);
+      const who=reg.concat(bk).map(x=>consWho(x.p,x.backup)).join("");
+      const cnt=reg.length ? `${reg.length}${bk.length?` + ${bk.length} зап.`:""}` : `${bk.length} зап.`;
+      return `<tr${reg.length?"":' class="bkprow"'}><td class="time"><b>${s.label}</b>`+
+             `<span style="display:block">· ${cnt}</span></td>`+
+             `<td><div class="cwho">${who}</div></td></tr>`;
+    }).join("");
+    return `<div class="mod"><div class="mhead"><div class="mtop">`+
+      `<span class="mname">${d}</span></div></div>`+
+      `<table><thead><tr><th>Время</th><th>Кто доступен</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }).join("");
+  return {html, main, bkp};
 }
 function renderCons(){
   const grid=document.getElementById("grid"); grid.innerHTML="";
-  let total=0;
+  let total=0, totalBkp=0;
   Object.keys(CONSULT).forEach(prog=>{
     const list=CONSULT[prog]||[];
+    const heads=new Set(list.map(p=>p.tg||p.name)).size;
     grid.insertAdjacentHTML("beforeend",
       `<div class="mod load"><div class="mhead"><div class="mtop">`+
       `<span class="mname">${prog}</span>`+
-      `<span class="mday">${list.length?`преподавателей: ${list.length}`:"скоро"}</span>`+
-      `</div></div></div>`);
+      `<span class="mday">${list.length?`преподавателей: ${heads}`:"скоро"}</span>`+
+      `</div>${list.length?`<div class="subs">Жёлтым отмечены <span class="bkp">запасные</span> слоты — они работают, только если основной не состоялся.</div>`:""}</div></div>`);
     if(!list.length){
       grid.insertAdjacentHTML("beforeend",
         `<div class="mod"><div class="mhead"><div class="subs empty">— расписание консультаций появится позже —</div></div></div>`);
       return;
     }
-    // разворот: день -> слот (по времени начала) -> кто доступен
-    const days={};
-    list.forEach(p=>(p.slots||[]).forEach(([d,t])=>{
-      const day=days[d]=(days[d]||{});
-      const sk=slotStart(t);
-      const slot=day[sk]=(day[sk]||{label:t,people:[]});
-      if(/[–-]/.test(t) && !/[–-]/.test(slot.label)) slot.label=t;  // предпочитаем полный интервал
-      slot.people.push(p); total++;
-    }));
-    Object.keys(days).sort((a,b)=>(CONS_DAY_ORD[a]||9)-(CONS_DAY_ORD[b]||9)).forEach(d=>{
-      const slots=days[d];
-      const rows=Object.keys(slots).map(Number).sort((a,b)=>a-b).map(sk=>{
-        const s=slots[sk];
-        const who=s.people.map(consWho).join(", ");
-        return `<tr><td class="time"><b>${s.label}</b></td><td>${who} <span style="color:var(--muted)">· ${s.people.length}</span></td></tr>`;
-      }).join("");
-      grid.insertAdjacentHTML("beforeend",
-        `<div class="mod"><div class="mhead"><div class="mtop">`+
-        `<span class="mname">${d}</span></div></div>`+
-        `<table><thead><tr><th>Время</th><th>Кто доступен</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+    consGroups(list).forEach(g=>{
+      const {html, main, bkp} = consDayCards(g.people);
+      if(g.track){
+        grid.insertAdjacentHTML("beforeend",
+          `<div class="mod load trk"><div class="mhead"><div class="mtop">`+
+          `<span class="mname">${prog} · ${g.track}</span>`+
+          `<span class="mday">преп.: ${g.people.length} · слотов: ${main}${bkp?` (+${bkp} зап.)`:""}</span>`+
+          `</div></div></div>`);
+      }
+      grid.insertAdjacentHTML("beforeend", html);
+      total+=main+bkp; totalBkp+=bkp;
     });
   });
-  document.getElementById("count").textContent = `Слотов консультаций: ${total}`;
+  document.getElementById("count").textContent =
+    `Слотов консультаций: ${total}${totalBkp?` · из них запасных: ${totalBkp}`:""}`;
 }
 function renderMag(){
   const d=fDay.value,v=fVenue.value,t=fTeach.value,dc=fDisc.value;
