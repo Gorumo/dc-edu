@@ -741,17 +741,49 @@ fLevel.addEventListener("change",switchMode);
 render();
 
 const pop=document.getElementById("pop");
+/* ---------- Число студентов (выборность) ---------- */
+function stripKind(s){ return String(s).replace(/\s*\((?:Прак|Конс\.онл|Лек)\)\s*$/,""); }
+function numOr(v){ return Number.isFinite(v) ? v : null; }
+// сколько студентов у потока, на который указывает элемент .sname
+function studentsOfEl(el){
+  if(!el) return null;
+  if(el.dataset.md!==undefined)  return numOr(STUDENTS[el.dataset.md]);
+  if(el.dataset.sid!==undefined) return numOr(STUDENTS[el.dataset.sid]);
+  if(el.dataset.cu!==undefined){
+    const c=CUSTOM[el.dataset.cu]; if(!c) return null;
+    if(c.tip){                                   // несколько дисциплин в одной ячейке — сумма
+      const ns=c.tip.map(d=>numOr(STUDENTS_DISC[d])).filter(n=>n!==null);
+      return ns.length ? ns.reduce((a,b)=>a+b,0) : null;
+    }
+    return numOr(STUDENTS[stripKind(c.stream||"")]) ?? numOr(STUDENTS_DISC[c.name]);
+  }
+  return null;
+}
+// если в ячейке несколько потоков — их сумма (иначе null)
+function cellStudents(el){
+  const td=el.closest("td"); if(!td) return null;
+  const els=[...td.querySelectorAll(".sname")];
+  if(els.length<2) return null;
+  const ns=els.map(studentsOfEl).filter(n=>n!==null);
+  return ns.length ? ns.reduce((a,b)=>a+b,0) : null;
+}
+function studLine(n,note){
+  return n===null ? "" :
+    `<div class="pl">Студентов: <b>${n}</b>${note?` <span style="color:var(--muted)">· ${note}</span>`:""}</div>`;
+}
 let pinned=false;
 function showPop(el,pin){
   if(el.dataset.md!==undefined){
     const podr=MAG_STREAMS[el.dataset.md];
     pop.innerHTML=`<div class="pf">${prettyName(el.dataset.md)}</div>`+
-      (podr?`<div class="pl">Подразделение: <b>${podr}</b></div>`:"");
+      (podr?`<div class="pl">Подразделение: <b>${podr}</b></div>`:"")+
+      studLine(studentsOfEl(el));
   } else if(el.dataset.sid!==undefined){
     const s=STREAMS[el.dataset.sid];
     if(!s) return;
     pop.innerHTML=`<div class="pf">${s.op||el.dataset.sid}</div>`+
-      (s.podr?`<div class="pl">Подразделение: <b>${s.podr}</b></div>`:"");
+      (s.podr?`<div class="pl">Подразделение: <b>${s.podr}</b></div>`:"")+
+      studLine(studentsOfEl(el));
   } else if(el.dataset.cu!==undefined){
     const c=CUSTOM[el.dataset.cu];
     if(!c) return;
@@ -759,8 +791,10 @@ function showPop(el,pin){
     if(c.stream) h+=`<div class="pl">Поток: <b>${c.stream}</b></div>`;
     if(c.podr) h+=`<div class="pl">Подразделение: <b>${c.podr}</b></div>`;
     if(c.op) h+=`<div class="pl">Описание ОП: <b>${c.op}</b></div>`;
+    h+=studLine(studentsOfEl(el), c.tip?`сумма по ${c.tip.length} дисц.`:"");
     if(c.tip) h+=`<div class="pl">Наименование дисциплин:</div>`+
-      c.tip.map(d=>`<div class="pl">• ${d}</div>`).join("");
+      c.tip.map(d=>{const n=numOr(STUDENTS_DISC[d]);
+        return `<div class="pl">• ${d}${n===null?"":` — <b>${n}</b>`}</div>`;}).join("");
     pop.innerHTML=h;
   } else if(el.dataset.tg!==undefined){
     pop.innerHTML=`<div class="pf">${el.dataset.tn}</div>`+
@@ -770,6 +804,8 @@ function showPop(el,pin){
     if(!p) return;
     pop.innerHTML=`<div class="pf">${p.full}</div><a href="https://t.me/${p.tg}" target="_blank">@${p.tg}</a>`;
   }
+  const together=el.classList.contains("sname") ? cellStudents(el) : null;
+  if(together!==null) pop.innerHTML+=`<div class="pl">Вместе на занятии: <b>${together}</b></div>`;
   pinned=!!pin;
   pop.classList.toggle("pinned",pinned);
   if(pinned) pop.innerHTML+=`<div class="pclose">✕ закрыть</div>`;
