@@ -92,6 +92,8 @@
   tr.bkprow td{background:rgba(255,207,71,.055)}
   tr.bkprow td.time b{color:#ffcf47}
   .mod.trk .mhead{background:linear-gradient(135deg,#26303f,#1b2029)}
+  .mod.crs .mhead{background:linear-gradient(135deg,#1d2531,#171b22);border-left:3px solid var(--accent)}
+  .mod.crs .mname{font-size:13.5px;color:var(--accent)}
   .empty{color:#4a505c}
   .count{font-size:12px;color:var(--muted);margin-left:auto}
   @media(max-width:560px){main{grid-template-columns:1fr;padding:14px}header{padding:16px}}
@@ -576,6 +578,9 @@ function render(){
   if(MODE==="cons") return renderCons();
   return MODE==="bach" ? renderBach() : renderMag();
 }
+const BACKUP="backup";
+// запасные слоты в выдаче скрыты (в данных остаются) — поставьте true, чтобы вернуть
+const CONS_SHOW_BACKUP=false;
 const CONS_DAY_ORD={"Понедельник":1,"Вторник":2,"Среда":3,"Четверг":4,"Пятница":5,"Суббота":6,"Воскресенье":7};
 function slotStart(t){ const m=String(t).match(/(\d{1,2}):(\d{2})/); return m?(+m[1]*60 + +m[2]):9999; }
 // «Фамилия Имя Отчество» -> «Фамилия И. О.» (полное ФИО остаётся в title)
@@ -599,22 +604,39 @@ function consGroups(list){
   list.forEach(p=>{ const k=p.track||""; if(!(k in by)){ by[k]=[]; order.push(k); } by[k].push(p); });
   return order.map(k=>({track:k, people:by[k]}));
 }
-function consDayCards(people){
-  // разворот: день -> слот (по времени начала) -> кто доступен
-  const days={}; let main=0, bkp=0;
-  people.forEach(p=>(p.slots||[]).forEach(([d,t,flag])=>{
-    const backup = flag==="backup";
-    const day=days[d]=(days[d]||{});
-    const sk=slotStart(t);
-    const slot=day[sk]=(day[sk]||{label:t,people:[]});
-    if(/[–-]/.test(t) && !/[–-]/.test(slot.label)) slot.label=t;  // предпочитаем полный интервал
-    slot.people.push({p,backup});
-    backup ? bkp++ : main++;
+// плоский список слотов; курс и метка "backup" — в хвосте слота либо в поле course
+function consSlots(people){
+  const out=[];
+  people.forEach(p=>(p.slots||[]).forEach(sl=>{
+    const [d,t,...rest]=sl;
+    out.push({p, d, t,
+      course: rest.find(x=>x!==BACKUP) || p.course || "",
+      backup: rest.includes(BACKUP)});
   }));
-  const html = Object.keys(days).sort((a,b)=>(CONS_DAY_ORD[a]||9)-(CONS_DAY_ORD[b]||9)).map(d=>{
-    const slots=days[d];
-    const rows=Object.keys(slots).map(Number).sort((a,b)=>a-b).map(sk=>{
-      const s=slots[sk];
+  return out.filter(s=>CONS_SHOW_BACKUP || !s.backup);
+}
+// порядок курсов: сначала объявленные, затем прочие, «без курса» — последним
+function consCourseNames(slots, people){
+  const names=[...CONSULT_COURSES];
+  const add=c=>{ if(c && !names.includes(c)) names.push(c); };
+  slots.forEach(s=>add(s.course)); people.forEach(p=>add(p.course));
+  if(slots.some(s=>!s.course) || people.some(p=>!p.course && !(p.slots||[]).length)) names.push("");
+  return names;
+}
+function consDayCards(slots){
+  // разворот: день -> слот (по времени начала) -> кто доступен
+  const days={};
+  slots.forEach(s=>{
+    const day=days[s.d]=(days[s.d]||{});
+    const sk=slotStart(s.t);
+    const slot=day[sk]=(day[sk]||{label:s.t,people:[]});
+    if(/[–-]/.test(s.t) && !/[–-]/.test(slot.label)) slot.label=s.t;  // предпочитаем полный интервал
+    slot.people.push(s);
+  });
+  return Object.keys(days).sort((a,b)=>(CONS_DAY_ORD[a]||9)-(CONS_DAY_ORD[b]||9)).map(d=>{
+    const byTime=days[d];
+    const rows=Object.keys(byTime).map(Number).sort((a,b)=>a-b).map(sk=>{
+      const s=byTime[sk];
       const reg=s.people.filter(x=>!x.backup), bk=s.people.filter(x=>x.backup);
       const who=reg.concat(bk).map(x=>consWho(x.p,x.backup)).join("");
       const cnt=reg.length ? `${reg.length}${bk.length?` + ${bk.length} зап.`:""}` : `${bk.length} зап.`;
@@ -626,39 +648,50 @@ function consDayCards(people){
       `<span class="mname">${d}</span></div></div>`+
       `<table><thead><tr><th>Время</th><th>Кто доступен</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }).join("");
-  return {html, main, bkp};
 }
+function consHead(cls, title, meta, sub){
+  return `<div class="mod load${cls?" "+cls:""}"><div class="mhead"><div class="mtop">`+
+    `<span class="mname">${title}</span>`+
+    (meta?`<span class="mday">${meta}</span>`:"")+
+    `</div>${sub?`<div class="subs">${sub}</div>`:""}</div></div>`;
+}
+const CONS_EMPTY='<div class="mod"><div class="mhead"><div class="subs empty">— расписание консультаций появится позже —</div></div></div>';
 function renderCons(){
   const grid=document.getElementById("grid"); grid.innerHTML="";
-  let total=0, totalBkp=0;
+  let total=0;
   Object.keys(CONSULT).forEach(prog=>{
     const list=CONSULT[prog]||[];
-    const heads=new Set(list.map(p=>p.tg||p.name)).size;
+    const heads=uniq(list.map(p=>p.tg||p.name)).length;
     grid.insertAdjacentHTML("beforeend",
-      `<div class="mod load"><div class="mhead"><div class="mtop">`+
-      `<span class="mname">${prog}</span>`+
-      `<span class="mday">${list.length?`преподавателей: ${heads}`:"скоро"}</span>`+
-      `</div>${list.length?`<div class="subs">Жёлтым отмечены <span class="bkp">запасные</span> слоты — они работают, только если основной не состоялся.</div>`:""}</div></div>`);
-    if(!list.length){
-      grid.insertAdjacentHTML("beforeend",
-        `<div class="mod"><div class="mhead"><div class="subs empty">— расписание консультаций появится позже —</div></div></div>`);
-      return;
-    }
+      consHead("", prog, list.length?`преподавателей: ${heads}`:"скоро"));
+    if(!list.length){ grid.insertAdjacentHTML("beforeend", CONS_EMPTY); return; }
     consGroups(list).forEach(g=>{
-      const {html, main, bkp} = consDayCards(g.people);
+      const slots=consSlots(g.people);
+      total+=slots.length;
+      const byCourse = slots.some(s=>s.course) || g.people.some(p=>p.course);
       if(g.track){
         grid.insertAdjacentHTML("beforeend",
-          `<div class="mod load trk"><div class="mhead"><div class="mtop">`+
-          `<span class="mname">${prog} · ${g.track}</span>`+
-          `<span class="mday">преп.: ${g.people.length} · слотов: ${main}${bkp?` (+${bkp} зап.)`:""}</span>`+
-          `</div></div></div>`);
+          consHead("trk", `${prog} · ${g.track}`,
+            `преп.: ${uniq(g.people.map(p=>p.tg||p.name)).length} · слотов: ${slots.length}`));
       }
-      grid.insertAdjacentHTML("beforeend", html);
-      total+=main+bkp; totalBkp+=bkp;
+      if(!byCourse){
+        grid.insertAdjacentHTML("beforeend", consDayCards(slots) || CONS_EMPTY);
+        return;
+      }
+      consCourseNames(slots, g.people).forEach(c=>{
+        const cs=slots.filter(s=>s.course===c);
+        // те, у кого расписание ещё не назначено
+        const pend=g.people.filter(p=>(p.course||"")===c && !(p.slots||[]).length);
+        const n=uniq([...cs.map(s=>s.p.tg||s.p.name), ...pend.map(p=>p.tg||p.name)]).length;
+        grid.insertAdjacentHTML("beforeend",
+          consHead("crs", c || "Курс не указан",
+            n ? `преп.: ${n} · слотов: ${cs.length}` : "пока никого",
+            pend.length ? `Расписание будет позже: ${pend.map(p=>consWho(p,false)).join("")}` : ""));
+        grid.insertAdjacentHTML("beforeend", consDayCards(cs) || CONS_EMPTY);
+      });
     });
   });
-  document.getElementById("count").textContent =
-    `Слотов консультаций: ${total}${totalBkp?` · из них запасных: ${totalBkp}`:""}`;
+  document.getElementById("count").textContent = `Слотов консультаций: ${total}`;
 }
 function renderMag(){
   const d=fDay.value,v=fVenue.value,t=fTeach.value,dc=fDisc.value;
