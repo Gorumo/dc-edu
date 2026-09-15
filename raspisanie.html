@@ -623,6 +623,17 @@ function consCourseNames(slots, people){
   if(slots.some(s=>!s.course) || people.some(p=>!p.course && !(p.slots||[]).length)) names.push("");
   return names;
 }
+// длительность слота в минутах (если конец не указан — считаем обычной парой, 90 мин)
+function slotMin(t){
+  const m=String(t).match(/(\d{1,2}):(\d{2})\D+(\d{1,2}):(\d{2})/);
+  return m ? (+m[3]*60 + +m[4]) - (+m[1]*60 + +m[2]) : 90;
+}
+function fmtHours(min){ const h=Math.floor(min/60), m=min%60; return m ? `${h} ч ${m} мин` : `${h} ч`; }
+// «слотов: N · X ч/нед» для набора слотов
+function consMeta(slots, lead){
+  const min=slots.reduce((a,s)=>a+slotMin(s.t),0);
+  return `${lead?lead+" · ":""}слотов: ${slots.length}${slots.length?` · ${fmtHours(min)}/нед`:""}`;
+}
 function consDayCards(slots){
   // разворот: день -> слот (по времени начала) -> кто доступен
   const days={};
@@ -663,7 +674,9 @@ function renderCons(){
     const list=CONSULT[prog]||[];
     const heads=uniq(list.map(p=>p.tg||p.name)).length;
     grid.insertAdjacentHTML("beforeend",
-      consHead("", prog, list.length?`преподавателей: ${heads}`:"скоро"));
+      consHead("", prog, list.length
+        ? consMeta(consSlots(list), `преподавателей: ${heads}`)
+        : "скоро"));
     if(!list.length){ grid.insertAdjacentHTML("beforeend", CONS_EMPTY); return; }
     consGroups(list).forEach(g=>{
       const slots=consSlots(g.people);
@@ -672,7 +685,7 @@ function renderCons(){
       if(g.track){
         grid.insertAdjacentHTML("beforeend",
           consHead("trk", `${prog} · ${g.track}`,
-            `преп.: ${uniq(g.people.map(p=>p.tg||p.name)).length} · слотов: ${slots.length}`));
+            consMeta(slots, `преп.: ${uniq(g.people.map(p=>p.tg||p.name)).length}`)));
       }
       if(!byCourse){
         grid.insertAdjacentHTML("beforeend", consDayCards(slots) || CONS_EMPTY);
@@ -685,7 +698,7 @@ function renderCons(){
         const n=uniq([...cs.map(s=>s.p.tg||s.p.name), ...pend.map(p=>p.tg||p.name)]).length;
         grid.insertAdjacentHTML("beforeend",
           consHead("crs", c || "Курс не указан",
-            n ? `преп.: ${n} · слотов: ${cs.length}` : "пока никого",
+            n ? consMeta(cs, `преп.: ${n}`) : "пока никого",
             pend.length ? `Расписание будет позже: ${pend.map(p=>consWho(p,false)).join("")}` : ""));
         grid.insertAdjacentHTML("beforeend", consDayCards(cs) || CONS_EMPTY);
       });
