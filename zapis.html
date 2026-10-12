@@ -59,6 +59,13 @@
   .copy{background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;
     padding:6px 10px;font-size:12.5px;cursor:pointer;margin-top:8px}
   .warn{margin-top:12px;font-size:12.5px;color:#ffcf47}
+  .modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .mode{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:14px;
+    padding:16px 12px;font-size:15px;font-weight:650;cursor:pointer;text-align:center;line-height:1.3}
+  .mode small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:4px}
+  .mode:hover{border-color:var(--accent)}
+  .mode.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:var(--card2)}
+  @media(max-width:420px){.modes{grid-template-columns:1fr}}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -67,34 +74,39 @@
   <h1>Запись на консультацию</h1>
 </header>
 <main>
-  <div id="loading" class="card muted">Загружаю свободные слоты…</div>
+  <div class="modes" id="modes">
+    <button type="button" class="mode" data-mode="book">Хочу записаться<small>выбрать время консультации</small></button>
+    <button type="button" class="mode" data-mode="find">Я уже записан(а)<small>посмотреть ссылку на подключение</small></button>
+  </div>
+
+  <div id="loading" class="card muted" hidden>Загружаю слоты…</div>
 
   <form id="form" hidden novalidate>
     <div class="card">
-      <div class="step">1 · Курс и лабораторная</div>
+      <div class="step" id="step1">1 · Курс и лабораторная</div>
       <div class="row">
         <div class="ctl"><label for="fCourse">Курс</label><select id="fCourse"></select></div>
       </div>
-      <div class="ctl" style="margin-top:12px">
+      <div class="ctl" id="ctlLab" style="margin-top:12px">
         <label>Номер лабораторной работы</label>
         <div class="labs" id="labs"></div>
       </div>
     </div>
 
     <div class="card">
-      <div class="step">2 · Время консультации</div>
+      <div class="step" id="step2">2 · Время консультации</div>
       <div id="slots" class="muted">Сначала выберите курс</div>
     </div>
 
-    <div class="card">
+    <div class="card" id="cardMe">
       <div class="step">3 · Ваши данные</div>
       <div class="row">
         <div class="ctl"><label for="fIsu">Номер ИСУ</label>
           <input id="fIsu" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="123456"></div>
-        <div class="ctl"><label for="fEmail">Почта</label>
+        <div class="ctl" id="ctlEmail"><label for="fEmail">Почта</label>
           <input id="fEmail" type="email" autocomplete="email" placeholder="name@itmo.ru"></div>
       </div>
-      <div class="ctl" style="margin-top:10px"><label for="fName">ФИО</label>
+      <div class="ctl" id="ctlName" style="margin-top:10px"><label for="fName">ФИО</label>
         <input id="fName" autocomplete="name" placeholder="Иванов Иван Иванович"></div>
     </div>
 
@@ -111,14 +123,32 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzfMtqsrgfsSlcVdHy13
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const state = { data:null, lab:0, slot:"" };
+const state = { mode:"", data:null, lab:0, slot:"" };   // mode: "book" — записаться, "find" — уже записан
+const finding = () => state.mode==="find";
+const isOpen = s => s.open !== false;
+// слоты текущего режима: для записи — открытые, для поиска своей записи — все незакончившиеся
+const modeSlots = () => state.data.slots.filter(s => finding() || isOpen(s));
 
 // данные студента запоминаются в браузере, чтобы не вводить заново
 function remember(){ try{ localStorage.setItem("zapis.me", JSON.stringify({isu:$("fIsu").value, name:$("fName").value, email:$("fEmail").value})); }catch(_){} }
 function recall(){ try{ const m=JSON.parse(localStorage.getItem("zapis.me")||"{}"); $("fIsu").value=m.isu||""; $("fName").value=m.name||""; $("fEmail").value=m.email||""; }catch(_){} }
 
+function setMode(m){
+  state.mode=m; state.slot="";
+  document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("on", b.dataset.mode===m));
+  const f=finding();
+  $("step1").textContent = f ? "1 · Курс" : "1 · Курс и лабораторная";
+  $("step2").textContent = f ? "2 · Консультация, на которую вы записаны" : "2 · Время консультации";
+  $("ctlLab").hidden = $("cardMe").hidden = f;
+  $("submit").textContent = f ? "Показать ссылку" : "Записаться";
+  $("err").textContent=""; $("done").hidden=true;
+  load();
+}
+$("modes").addEventListener("click", e=>{ const b=e.target.closest(".mode"); if(b) setMode(b.dataset.mode); });
+
 async function load(){
-  $("loading").hidden=false; $("loading").textContent="Загружаю свободные слоты…";
+  $("form").hidden=true;
+  $("loading").hidden=false; $("loading").textContent="Загружаю слоты…";
   try{
     const r = await fetch(SCRIPT_URL + "?action=slots&t=" + Date.now());
     const d = await r.json();
@@ -144,10 +174,10 @@ const courseRank = c => { const i=COURSE_ORDER.indexOf(c); return i<0 ? COURSE_O
 
 function renderCourses(){
   const sel=$("fCourse"), cur=sel.value;
-  const cs=[...state.data.courses].sort((a,b)=>courseRank(a)-courseRank(b));
+  const cs=[...new Set(modeSlots().map(s=>s.course))].sort((a,b)=>courseRank(a)-courseRank(b));
   sel.innerHTML = `<option value="">— выберите курс —</option>` +
     cs.map(c=>`<option${c===cur?" selected":""}>${esc(c)}</option>`).join("");
-  if(!cs.length) sel.innerHTML = `<option value="">Сейчас нет открытых слотов</option>`;
+  if(!cs.length) sel.innerHTML = `<option value="">${finding() ? "Нет предстоящих консультаций" : "Сейчас нет открытых слотов"}</option>`;
 }
 
 function renderLabs(){
@@ -159,18 +189,19 @@ function renderLabs(){
 function renderSlots(){
   const c=$("fCourse").value, box=$("slots");
   if(!c){ box.className="muted"; box.textContent="Сначала выберите курс"; return; }
-  const list=state.data.slots.filter(s=>s.course===c);
-  if(!state.data.slots.some(s=>s.id===state.slot && s.left>0)) state.slot="";
+  const list=modeSlots().filter(s=>s.course===c);
+  const can = s => finding() || s.left>0;     // при поиске записи заполненность не важна
+  if(!list.some(s=>s.id===state.slot && can(s))) state.slot="";
   if(!list.length){ box.className="muted"; box.textContent="По этому курсу пока нет слотов"; return; }
   box.className="";
   let html="", lastDay="";
   list.forEach(s=>{
     const day=`${s.dow}, ${s.date}`;
     if(day!==lastDay){ html+=`<div class="day">${esc(day)}</div>`; lastDay=day; }
-    const n = s.left>0 ? `свободно ${s.left} из ${s.cap}` : "мест нет";
-    html+=`<button type="button" class="slot${s.id===state.slot?" on":""}" data-slot="${esc(s.id)}"${s.left>0?"":" disabled"}>`+
+    const n = finding() ? "" : s.left>0 ? `свободно ${s.left} из ${s.cap}` : "мест нет";
+    html+=`<button type="button" class="slot${s.id===state.slot?" on":""}" data-slot="${esc(s.id)}"${can(s)?"":" disabled"}>`+
       `<span class="t">${esc(s.time)}</span><span class="w">${esc(s.teacher)}</span>`+
-      `<span class="n${s.left>0&&s.left<=2?" low":""}">${n}</span></button>`;
+      (n ? `<span class="n${s.left>0&&s.left<=2?" low":""}">${n}</span>` : "")+`</button>`;
   });
   box.innerHTML=html;
 }
@@ -182,45 +213,49 @@ $("slots").addEventListener("click", e=>{ const b=e.target.closest(".slot"); if(
 $("form").addEventListener("submit", async e=>{
   e.preventDefault();
   const err=$("err"); err.textContent="";
-  const body={ slotId:state.slot, lab:state.lab,
-    isu:$("fIsu").value.trim(), name:$("fName").value.trim(), email:$("fEmail").value.trim() };
+  const f=finding();
+  const body = f
+    ? { action:"lookup", slotId:state.slot }
+    : { slotId:state.slot, lab:state.lab,
+        isu:$("fIsu").value.trim(), name:$("fName").value.trim(), email:$("fEmail").value.trim() };
   if(!$("fCourse").value) return err.textContent="Выберите курс";
-  if(!body.lab) return err.textContent="Выберите номер лабораторной работы";
-  if(!body.slotId) return err.textContent="Выберите время консультации";
-  if(!/^\d{6}$/.test(body.isu)) return err.textContent="Номер ИСУ — 6 цифр";
-  if(body.name.split(/\s+/).length<2) return err.textContent="Укажите ФИО полностью";
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) return err.textContent="Проверьте адрес почты";
+  if(!f && !body.lab) return err.textContent="Выберите номер лабораторной работы";
+  if(!body.slotId) return err.textContent = f ? "Выберите консультацию, на которую записывались" : "Выберите время консультации";
+  if(!f && !/^\d{6}$/.test(body.isu)) return err.textContent="Номер ИСУ — 6 цифр";
+  if(!f && body.name.split(/\s+/).length<2) return err.textContent="Укажите ФИО полностью";
+  if(!f && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) return err.textContent="Проверьте адрес почты";
 
-  const btn=$("submit"); btn.disabled=true; btn.textContent="Записываю…";
+  const btn=$("submit"), label=btn.textContent;
+  btn.disabled=true; btn.textContent = f ? "Загружаю…" : "Записываю…";
   try{
     // text/plain — чтобы браузер не делал CORS preflight, который Apps Script не поддерживает
     const r = await fetch(SCRIPT_URL, { method:"POST", body:JSON.stringify(body) });
     const d = await r.json();
     if(!d.ok){
-      err.textContent = d.error || "Не удалось записаться";
+      err.textContent = d.error || (f ? "Не удалось получить ссылку" : "Не удалось записаться");
       if(d.refresh){ state.slot=""; await load(); }
       return;
     }
-    remember();
-    showDone(d.booking);
+    if(!f) remember();
+    showDone(d.booking, f);
   }catch(_){
     err.textContent="Нет связи с сервером. Попробуйте ещё раз.";
   }finally{
-    btn.disabled=false; btn.textContent="Записаться";
+    btn.disabled=false; btn.textContent=label;
   }
 });
 
-function showDone(b){
+function showDone(b, found){
   const link = /^https?:\/\//i.test(b.link) ? b.link : "";
   $("form").hidden=true;
   const box=$("done"); box.hidden=false;
   box.innerHTML =
-    `<h2>✓ Вы записаны</h2>`+
+    `<h2>${found ? "Ваша запись" : "✓ Вы записаны"}</h2>`+
     `<dl class="kv">`+
       `<dt>Дата</dt><dd class="big">${esc(b.dow)}, ${esc(b.date)}</dd>`+
       `<dt>Время</dt><dd class="big">${esc(b.time)}</dd>`+
       `<dt>Курс</dt><dd>${esc(b.course)}</dd>`+
-      `<dt>Лабораторная</dt><dd>№ ${esc(b.lab)}</dd>`+
+      (b.lab ? `<dt>Лабораторная</dt><dd>№ ${esc(b.lab)}</dd>` : "")+
       `<dt>Преподаватель</dt><dd>${esc(b.teacher)}</dd>`+
     `</dl>`+
     `<div class="linkbox"><label>Ссылка на подключение</label><div style="margin-top:6px">`+
@@ -230,15 +265,15 @@ function showDone(b){
       (link ? `<button type="button" class="copy" id="copy">Скопировать ссылку</button>`+
               `<a class="btn" style="display:block;text-align:center;text-decoration:none;color:#0d0f13" href="${esc(link)}" target="_blank" rel="noopener">Открыть ссылку</a>` : "")+
     `</div>`+
-    `<div class="warn">Сохраните ссылку или сделайте скриншот этой страницы — повторно она не показывается.</div>`+
-    `<button type="button" class="copy" id="again" style="margin-top:14px">Записаться ещё на одну консультацию</button>`;
+    (found ? "" : `<div class="warn">Ссылку можно посмотреть снова: «Я уже записан(а)» → выберите эту консультацию.</div>`)+
+    `<button type="button" class="copy" id="again" style="margin-top:14px">${found ? "Выбрать другую консультацию" : "Записаться ещё на одну консультацию"}</button>`;
   if(link) $("copy").onclick=()=>{ navigator.clipboard?.writeText(link).then(()=>{ $("copy").textContent="Скопировано ✓"; }); };
   $("again").onclick=()=>{ box.hidden=true; state.slot=""; load(); };
+  $("modes").hidden=false;
   window.scrollTo(0,0);
 }
 
 recall();
-load();
 </script>
 </body>
 </html>

@@ -87,15 +87,18 @@ function doGet() {
     const ss = SpreadsheetApp.getActive();
     const taken = countBookings(ss);
     const now = Date.now();
+    // все незакончившиеся слоты: open — на них можно записаться,
+    // остальные нужны только для поиска своей записи («Я уже записан»)
     const slots = readSlots(ss)
-      .filter(s => s.active && isOpen(s, now))
+      .filter(s => s.end.getTime() > now)
       .sort((a, b) => a.start - b.start)
       .map(s => ({
         id: s.id, course: s.course, teacher: s.teacher,
         date: fmtDate(ss, s.date), dow: DOW[s.start.getDay()], time: s.time,
-        cap: s.cap, left: Math.max(0, s.cap - (taken[s.id] || 0))
+        cap: s.cap, left: Math.max(0, s.cap - (taken[s.id] || 0)),
+        open: s.active && isOpen(s, now)
       }));
-    const courses = [...new Set(slots.map(s => s.course))];
+    const courses = [...new Set(slots.filter(s => s.open).map(s => s.course))];
     return json({ ok: true, courses, labs: LABS, slots });
   } catch (err) {
     return json({ ok: false, error: 'Ошибка сервера: ' + err.message });
@@ -105,6 +108,7 @@ function doGet() {
 function doPost(e) {
   let d;
   try { d = JSON.parse(e.postData.contents); } catch (_) { return json({ ok: false, error: 'Некорректный запрос' }); }
+  if (d.action === 'lookup') return lookup(d);
 
   const isu = String(d.isu || '').trim();
   const name = clean(d.name, 120);
@@ -165,10 +169,25 @@ function readSlots(ss) {
         id: String(r[0] || '').trim(), course: String(r[1] || '').trim(),
         teacher: String(r[2] || '').trim(), date, time,
         link: String(r[5] || '').trim(), cap: Number(r[6]) || 0,
-        active: isTrue(r[7]), start: startOf(date, time)
+        active: isTrue(r[7]), start: startOf(date, time), end: endOf(date, time)
       };
     })
     .filter(s => s.id && s.course && s.start && s.cap > 0);
+}
+
+// «Я уже записан»: ссылка на выбранный слот (студент сам знает, куда записан)
+function lookup(d) {
+  const ss = SpreadsheetApp.getActive();
+  const slot = readSlots(ss).find(s => s.id === String(d.slotId || ''));
+  if (!slot) return json({ ok: false, error: 'Слот не найден', refresh: true });
+  return json({
+    ok: true,
+    booking: {
+      course: slot.course, teacher: slot.teacher,
+      date: fmtDate(ss, slot.date), dow: DOW[slot.start.getDay()], time: slot.time,
+      link: slot.link
+    }
+  });
 }
 
 // число записей по id слота
@@ -205,6 +224,17 @@ function startOf(date, time) {
   const m = String(time).match(/(\d{1,2}):(\d{2})/);
   const d = new Date(date.getTime());
   if (m) d.setHours(+m[1], +m[2], 0, 0);
+  return d;
+}
+
+// конец слота: второе время из «18:50–20:20»; если его нет — начало + 90 мин
+function endOf(date, time) {
+  const start = startOf(date, time);
+  if (!start) return null;
+  const m = String(time).match(/\d{1,2}:\d{2}\D+(\d{1,2}):(\d{2})/);
+  if (!m) return new Date(start.getTime() + 90 * 60000);
+  const d = new Date(start.getTime());
+  d.setHours(+m[1], +m[2], 0, 0);
   return d;
 }
 
