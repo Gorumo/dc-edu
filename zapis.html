@@ -131,8 +131,20 @@ async function load(){
   }
 }
 
+// порядок курсов в списке; курсы, которых здесь нет, идут перед последним
+const COURSE_ORDER = [
+  "Инструментальные возможности ИИ (Бакалавриат)",
+  "Культура ИИ: Аналитика данных",
+  "Культура ИИ: Квалифицированный заказчик",
+  "Культура ИИ: Медиа и Креативность",
+  "AI Culture",
+  "ИИ-мышление: Наука и технологии"
+];
+const courseRank = c => { const i=COURSE_ORDER.indexOf(c); return i<0 ? COURSE_ORDER.length-1.5 : i; };
+
 function renderCourses(){
-  const sel=$("fCourse"), cur=sel.value, cs=state.data.courses;
+  const sel=$("fCourse"), cur=sel.value;
+  const cs=[...state.data.courses].sort((a,b)=>courseRank(a)-courseRank(b));
   sel.innerHTML = `<option value="">— выберите курс —</option>` +
     cs.map(c=>`<option${c===cur?" selected":""}>${esc(c)}</option>`).join("");
   if(!cs.length) sel.innerHTML = `<option value="">Сейчас нет открытых слотов</option>`;

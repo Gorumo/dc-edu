@@ -19,6 +19,12 @@ DAYS = {"Понедельник": 0, "Вторник": 1, "Среда": 2, "Че
 # курс для тех, у кого он не указан в CONSULT
 DEFAULT_COURSE = {("Бакалавриат", ""): "Инструментальные возможности ИИ",
                   ("Магистратура", "Продвинутый"): "Наука и технологии"}
+# названия курсов в форме записи; id слота считается от короткого названия
+COURSE_TITLE = {"Инструментальные возможности ИИ": "Инструментальные возможности ИИ (Бакалавриат)",
+                "Наука и технологии": "ИИ-мышление: Наука и технологии",
+                "Аналитика данных": "Культура ИИ: Аналитика данных",
+                "Квалифицированный заказчик": "Культура ИИ: Квалифицированный заказчик",
+                "Медиа и креативность": "Культура ИИ: Медиа и Креативность"}
 SEATS_PER_90_MIN = 18
 
 
@@ -52,12 +58,13 @@ def main():
                 day, time, *rest = sl
                 course = next((x for x in rest if x != "backup"), None) or p.get("course") \
                     or DEFAULT_COURSE.get((prog, p.get("track", "")), "")
+                title = COURSE_TITLE.get(course, course)
                 seats = round(minutes(time) / 90 * SEATS_PER_90_MIN)
                 for w in range(a.weeks):
                     date = monday + dt.timedelta(days=7 * w + DAYS[day])
                     key = f"{prog}|{course}|{teacher}|{date}|{time}"
                     sid = "s" + hashlib.md5(key.encode()).hexdigest()[:7]   # стабильный id; буква — чтобы Sheets не принял за число
-                    rows.append([sid, course, teacher, date, time, "", seats, "TRUE"])
+                    rows.append([sid, title, teacher, date, time, "", seats, "TRUE"])
 
     rows.sort(key=lambda r: (r[3], int(re.match(r"\d+", r[4])[0]), r[1], r[2]))
     with OUT.open("w", encoding="utf-8", newline="") as f:
