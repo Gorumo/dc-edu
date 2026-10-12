@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Запись на консультацию · ВШ ЦК ОУМ</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#181b22; --card2:#1f232c; --line:#2a2f3a;
+    --txt:#e8eaf0; --muted:#9aa3b2; --accent:#6aa0ff; --ok:#3bcf8e; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    font-size:14px;line-height:1.4}
+  header{padding:20px 22px 14px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:19px;font-weight:650}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .sub a{color:var(--accent)}
+  main{max-width:720px;margin:0 auto;padding:18px 16px 60px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  .step{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px}
+  .row{display:flex;flex-wrap:wrap;gap:10px}
+  .ctl{display:flex;flex-direction:column;gap:4px;flex:1 1 200px;min-width:0}
+  label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  select,input{background:var(--card2);color:var(--txt);border:1px solid var(--line);
+    border-radius:8px;padding:9px 10px;font-size:14px;width:100%}
+  select:focus,input:focus{outline:none;border-color:var(--accent)}
+  .labs{display:flex;flex-wrap:wrap;gap:6px}
+  .lab{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;
+    width:44px;padding:8px 0;font-size:14px;cursor:pointer;font-variant-numeric:tabular-nums}
+  .lab:hover{border-color:var(--accent)}
+  .lab.on{background:var(--accent);color:#0d0f13;border-color:var(--accent);font-weight:700}
+  .day{font-size:12px;color:var(--accent);font-weight:600;letter-spacing:.04em;margin:12px 0 6px}
+  .day:first-child{margin-top:0}
+  .slot{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card2);
+    color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+    margin-bottom:6px;cursor:pointer;font-size:13.5px}
+  .slot:hover:not(:disabled){border-color:var(--accent)}
+  .slot.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .slot:disabled{opacity:.45;cursor:not-allowed}
+  .slot .t{font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .slot .w{color:var(--muted);flex:1;min-width:0}
+  .slot .n{font-size:12px;white-space:nowrap;color:var(--ok)}
+  .slot .n.low{color:#ffcf47}
+  .slot:disabled .n{color:var(--muted)}
+  .muted{color:var(--muted)}
+  .err{color:var(--err);margin-top:10px;min-height:1em}
+  .btn{background:var(--accent);color:#0d0f13;border:0;border-radius:10px;padding:12px 18px;
+    font-size:15px;font-weight:650;cursor:pointer;width:100%;margin-top:4px}
+  .btn:disabled{opacity:.5;cursor:wait}
+  .done{border-color:var(--ok)}
+  .done h2{margin:0 0 12px;font-size:17px;color:var(--ok)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}
+  .kv dt{color:var(--muted)}
+  .kv dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+  .big{font-size:18px}
+  .linkbox{margin-top:14px;padding:12px;background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .linkbox a{color:var(--accent);word-break:break-all;font-size:14px}
+  .linkbox .btn{margin-top:10px}
+  .copy{background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;
+    padding:6px 10px;font-size:12.5px;cursor:pointer;margin-top:8px}
+  .warn{margin-top:12px;font-size:12.5px;color:#ffcf47}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>Запись на консультацию</h1>
+  <div class="sub">ВШ ЦК ОУМ · <a href="raspisanie.html">расписание →</a></div>
+</header>
+<main>
+  <div id="loading" class="card muted">Загружаю свободные слоты…</div>
+
+  <form id="form" hidden novalidate>
+    <div class="card">
+      <div class="step">1 · Курс и лабораторная</div>
+      <div class="row">
+        <div class="ctl"><label for="fCourse">Курс</label><select id="fCourse"></select></div>
+      </div>
+      <div class="ctl" style="margin-top:12px">
+        <label>Номер лабораторной работы</label>
+        <div class="labs" id="labs"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="step">2 · Время консультации</div>
+      <div id="slots" class="muted">Сначала выберите курс</div>
+    </div>
+
+    <div class="card">
+      <div class="step">3 · Ваши данные</div>
+      <div class="row">
+        <div class="ctl"><label for="fIsu">Номер ИСУ</label>
+          <input id="fIsu" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="123456"></div>
+        <div class="ctl"><label for="fEmail">Почта</label>
+          <input id="fEmail" type="email" autocomplete="email" placeholder="name@itmo.ru"></div>
+      </div>
+      <div class="ctl" style="margin-top:10px"><label for="fName">ФИО</label>
+        <input id="fName" autocomplete="name" placeholder="Иванов Иван Иванович"></div>
+    </div>
+
+    <button class="btn" id="submit" type="submit">Записаться</button>
+    <div class="err" id="err"></div>
+  </form>
+
+  <div id="done" class="card done" hidden></div>
+</main>
+
+<script>
+// URL веб-приложения Apps Script (см. apps-script/Code.gs)
+const SCRIPT_URL = "https://script.google.com/macros/s/ВСТАВЬТЕ_ID/exec";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const state = { data:null, lab:0, slot:"" };
+
+// данные студента запоминаются в браузере, чтобы не вводить заново
+function remember(){ try{ localStorage.setItem("zapis.me", JSON.stringify({isu:$("fIsu").value, name:$("fName").value, email:$("fEmail").value})); }catch(_){} }
+function recall(){ try{ const m=JSON.parse(localStorage.getItem("zapis.me")||"{}"); $("fIsu").value=m.isu||""; $("fName").value=m.name||""; $("fEmail").value=m.email||""; }catch(_){} }
+
+async function load(){
+  $("loading").hidden=false; $("loading").textContent="Загружаю свободные слоты…";
+  try{
+    const r = await fetch(SCRIPT_URL + "?action=slots&t=" + Date.now());
+    const d = await r.json();
+    if(!d.ok) throw new Error(d.error);
+    state.data = d;
+    renderCourses(); renderLabs(); renderSlots();
+    $("loading").hidden=true; $("form").hidden=false;
+  }catch(e){
+    $("loading").textContent = "Не удалось загрузить слоты. Обновите страницу позже.";
+  }
+}
+
+function renderCourses(){
+  const sel=$("fCourse"), cur=sel.value, cs=state.data.courses;
+  sel.innerHTML = `<option value="">— выберите курс —</option>` +
+    cs.map(c=>`<option${c===cur?" selected":""}>${esc(c)}</option>`).join("");
+  if(!cs.length) sel.innerHTML = `<option value="">Сейчас нет открытых слотов</option>`;
+}
+
+function renderLabs(){
+  const n=state.data.labs||6;
+  $("labs").innerHTML = Array.from({length:n},(_,i)=>i+1)
+    .map(i=>`<button type="button" class="lab${i===state.lab?" on":""}" data-lab="${i}">${i}</button>`).join("");
+}
+
+function renderSlots(){
+  const c=$("fCourse").value, box=$("slots");
+  if(!c){ box.className="muted"; box.textContent="Сначала выберите курс"; return; }
+  const list=state.data.slots.filter(s=>s.course===c);
+  if(!state.data.slots.some(s=>s.id===state.slot && s.left>0)) state.slot="";
+  if(!list.length){ box.className="muted"; box.textContent="По этому курсу пока нет слотов"; return; }
+  box.className="";
+  let html="", lastDay="";
+  list.forEach(s=>{
+    const day=`${s.dow}, ${s.date}`;
+    if(day!==lastDay){ html+=`<div class="day">${esc(day)}</div>`; lastDay=day; }
+    const n = s.left>0 ? `свободно ${s.left} из ${s.cap}` : "мест нет";
+    html+=`<button type="button" class="slot${s.id===state.slot?" on":""}" data-slot="${esc(s.id)}"${s.left>0?"":" disabled"}>`+
+      `<span class="t">${esc(s.time)}</span><span class="w">${esc(s.teacher)}</span>`+
+      `<span class="n${s.left>0&&s.left<=2?" low":""}">${n}</span></button>`;
+  });
+  box.innerHTML=html;
+}
+
+$("fCourse").addEventListener("change", ()=>{ state.slot=""; renderSlots(); });
+$("labs").addEventListener("click", e=>{ const b=e.target.closest(".lab"); if(b){ state.lab=+b.dataset.lab; renderLabs(); } });
+$("slots").addEventListener("click", e=>{ const b=e.target.closest(".slot"); if(b&&!b.disabled){ state.slot=b.dataset.slot; renderSlots(); } });
+
+$("form").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const err=$("err"); err.textContent="";
+  const body={ slotId:state.slot, lab:state.lab,
+    isu:$("fIsu").value.trim(), name:$("fName").value.trim(), email:$("fEmail").value.trim() };
+  if(!$("fCourse").value) return err.textContent="Выберите курс";
+  if(!body.lab) return err.textContent="Выберите номер лабораторной работы";
+  if(!body.slotId) return err.textContent="Выберите время консультации";
+  if(!/^\d{6}$/.test(body.isu)) return err.textContent="Номер ИСУ — 6 цифр";
+  if(body.name.split(/\s+/).length<2) return err.textContent="Укажите ФИО полностью";
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) return err.textContent="Проверьте адрес почты";
+
+  const btn=$("submit"); btn.disabled=true; btn.textContent="Записываю…";
+  try{
+    // text/plain — чтобы браузер не делал CORS preflight, который Apps Script не поддерживает
+    const r = await fetch(SCRIPT_URL, { method:"POST", body:JSON.stringify(body) });
+    const d = await r.json();
+    if(!d.ok){
+      err.textContent = d.error || "Не удалось записаться";
+      if(d.refresh){ state.slot=""; await load(); }
+      return;
+    }
+    remember();
+    showDone(d.booking);
+  }catch(_){
+    err.textContent="Нет связи с сервером. Попробуйте ещё раз.";
+  }finally{
+    btn.disabled=false; btn.textContent="Записаться";
+  }
+});
+
+function showDone(b){
+  const link = /^https?:\/\//i.test(b.link) ? b.link : "";
+  $("form").hidden=true;
+  const box=$("done"); box.hidden=false;
+  box.innerHTML =
+    `<h2>✓ Вы записаны</h2>`+
+    `<dl class="kv">`+
+      `<dt>Дата</dt><dd class="big">${esc(b.dow)}, ${esc(b.date)}</dd>`+
+      `<dt>Время</dt><dd class="big">${esc(b.time)}</dd>`+
+      `<dt>Курс</dt><dd>${esc(b.course)}</dd>`+
+      `<dt>Лабораторная</dt><dd>№ ${esc(b.lab)}</dd>`+
+      `<dt>Преподаватель</dt><dd>${esc(b.teacher)}</dd>`+
+    `</dl>`+
+    `<div class="linkbox"><label>Ссылка на подключение</label><div style="margin-top:6px">`+
+      (link ? `<a href="${esc(link)}" target="_blank" rel="noopener">${esc(link)}</a>`
+            : `<span>${esc(b.link || "преподаватель пришлёт ссылку отдельно")}</span>`)+
+      `</div>`+
+      (link ? `<button type="button" class="copy" id="copy">Скопировать ссылку</button>`+
+              `<a class="btn" style="display:block;text-align:center;text-decoration:none;color:#0d0f13" href="${esc(link)}" target="_blank" rel="noopener">Открыть ссылку</a>` : "")+
+    `</div>`+
+    `<div class="warn">Сохраните ссылку или сделайте скриншот этой страницы — повторно она не показывается.</div>`+
+    `<button type="button" class="copy" id="again" style="margin-top:14px">Записаться ещё на одну консультацию</button>`;
+  if(link) $("copy").onclick=()=>{ navigator.clipboard?.writeText(link).then(()=>{ $("copy").textContent="Скопировано ✓"; }); };
+  $("again").onclick=()=>{ box.hidden=true; state.slot=""; load(); };
+  window.scrollTo(0,0);
+}
+
+recall();
+load();
+</script>
+</body>
+</html>
