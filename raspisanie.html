@@ -59,6 +59,7 @@
   td.time b{display:block;color:var(--txt);font-size:13px}
   .cell{display:flex;align-items:flex-start;gap:7px}
   .disc{display:block}
+  .sorig{display:block;font-size:10px;color:var(--muted);opacity:.8;margin-top:1px}
   .ptea{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
   .ptea.has{color:var(--accent);cursor:pointer;border-bottom:1px dashed rgba(106,160,255,.5);
     display:inline-block;line-height:1.5;outline:none}
@@ -215,8 +216,10 @@ function cell(s){
   const disc = (s in MAG_STREAMS)
     ? `<span class="disc"><span class="sname" tabindex="0" data-md="${s}">${prettyName(s)}</span></span>`
     : `<span class="disc">${prettyName(s)}</span>`;
+  // исходное название потока (как в системе выборности)
+  const orig = prettyName(s)!==s ? `<span class="sorig">${s}</span>` : "";
   return `<span class="cell"><span class="bar" style="background:${discColor(s)}"></span>`+
-    `<span>${disc}${tea}</span></span>`;
+    `<span>${disc}${orig}${tea}</span></span>`;
 }
 function uniq(arr){return [...new Set(arr.filter(Boolean))];}
 function fill(sel,vals,allLabel){
@@ -822,6 +825,7 @@ function showPop(el,pin){
   if(el.dataset.md!==undefined){
     const podr=MAG_STREAMS[el.dataset.md];
     pop.innerHTML=`<div class="pf">${prettyName(el.dataset.md)}</div>`+
+      `<div class="pl">Поток: <b>${el.dataset.md}</b></div>`+
       (podr?`<div class="pl">Подразделение: <b>${podr}</b></div>`:"")+
       studLine(studentsOfEl(el));
   } else if(el.dataset.sid!==undefined){

@@ -66,6 +66,11 @@
   .mode:hover{border-color:var(--accent)}
   .mode.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:var(--card2)}
   @media(max-width:420px){.modes{grid-template-columns:1fr}}
+  .notice{border-color:var(--accent)}
+  .notice h2{margin:0 0 8px;font-size:17px}
+  .notice p{margin:0 0 14px;font-size:15px;line-height:1.5}
+  .notice p a{color:var(--accent)}
+  .notice .btn{display:block;text-align:center;text-decoration:none}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -74,7 +79,14 @@
   <h1>Запись на консультацию</h1>
 </header>
 <main>
-  <div class="modes" id="modes">
+  <!-- запись временно перенесена в LMS: чтобы вернуть форму, удалите #closed и атрибут hidden у #modes -->
+  <div class="card notice" id="closed">
+    <h2>Запись перенесена в LMS</h2>
+    <p>Сервис записи на защиты лабораторных работ вновь доступен через курс на&nbsp;<a href="https://lms.itmo.ru" target="_blank" rel="noopener">lms.itmo.ru</a>.</p>
+    <a class="btn" href="https://lms.itmo.ru" target="_blank" rel="noopener">Перейти в lms.itmo.ru</a>
+  </div>
+
+  <div class="modes" id="modes" hidden>
     <button type="button" class="mode" data-mode="book">Хочу записаться<small>выбрать время консультации</small></button>
     <button type="button" class="mode" data-mode="find">Я уже записан(а)<small>посмотреть ссылку на подключение</small></button>
   </div>
