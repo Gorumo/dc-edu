@@ -59,6 +59,9 @@
   td.time b{display:block;color:var(--txt);font-size:13px}
   .cell{display:flex;align-items:flex-start;gap:7px}
   .disc{display:block}
+  .scnt{display:block;font-size:10.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+  .scnt.chg{color:var(--accent)}
+  .scnt.over{color:#ff6b6b;font-weight:700}
   .sorig{display:block;font-size:10px;color:var(--muted);opacity:.8;margin-top:1px}
   .ptea{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
   .ptea.has{color:var(--accent);cursor:pointer;border-bottom:1px dashed rgba(106,160,255,.5);
@@ -113,6 +116,7 @@
     <div class="ctl" id="ctlVenue"><label>Площадка</label><select id="fVenue"></select></div>
     <div class="ctl" id="ctlTeach"><label id="lblTeach">Преподаватель</label><select id="fTeach"></select></div>
     <div class="ctl" id="ctlDisc"><label id="lblDisc">Дисциплина</label><select id="fDisc"></select></div>
+    <div class="ctl" id="ctlCount"><label>Численность</label><select id="fCount"></select></div>
     <span class="count" id="count"></span>
   </div>
   <div class="weekbar" id="weekBar"></div>
@@ -206,7 +210,21 @@ function prettyName(s){
   }
   return out;
 }
-function cell(s){
+// --- численность потоков: «Текущая» (выгрузка выборности) или «С переводами» (+ MOVES.delta) ---
+let countMode="";
+try{ countMode=localStorage.getItem("countMode")||""; }catch(e){}
+function moveDelta(s){ return (countMode==="moves" && typeof MOVES!=="undefined" && MOVES.delta[s]) || 0; }
+function studCount(s){ const n=STUDENTS[s]; return Number.isFinite(n) ? n+moveDelta(s) : null; }
+function countLine(s, aud){
+  if(!countMode) return "";
+  const n=studCount(s); if(n===null) return "";
+  const d=moveDelta(s);
+  const cm=String(aud||"").match(/\((\d+)\)/), cap=cm?+cm[1]:null;   // вместимость аудитории этой пары
+  const over=cap!==null && n>cap;
+  const txt=d ? `👥 ${n-d} → ${n} (${d>0?"+":""}${d})` : `👥 ${n}`;
+  return `<span class="scnt${d?" chg":""}${over?" over":""}"${over?` title="больше, чем мест в аудитории (${cap})"`:""}>${txt}${over?` · мест ${cap}`:""}</span>`;
+}
+function cell(s, aud){
   if(!s) return '<span class="empty">—</span>';
   const k=teachKey(s);
   if(k && isHiddenTeacher(PEOPLE[k].full)) return '<span class="empty">—</span>';
@@ -219,7 +237,7 @@ function cell(s){
   // исходное название потока (как в системе выборности)
   const orig = prettyName(s)!==s ? `<span class="sorig">${s}</span>` : "";
   return `<span class="cell"><span class="bar" style="background:${discColor(s)}"></span>`+
-    `<span>${disc}${orig}${tea}</span></span>`;
+    `<span>${disc}${orig}${countLine(s,aud)}${tea}</span></span>`;
 }
 function uniq(arr){return [...new Set(arr.filter(Boolean))];}
 function fill(sel,vals,allLabel){
@@ -230,6 +248,7 @@ function fill(sel,vals,allLabel){
 const DISCS=[["КЗ","КультИИ КЗ"],["АД","КультИИ АД"],["МиК","КультИИ МиК"],["НиТ","ИИ Прод"],["AI","AI Culture"]];
 function showCtl(el,on){el.style.display=on?"":"none";}
 function setupFilters(){
+  showCtl(ctlCount, MODE==="mag" || MODE==="week");
   if(MODE==="week" || MODE==="cons"){
     showCtl(ctlLevel,false); showCtl(ctlDay,false); showCtl(ctlVenue,false); showCtl(ctlDisc,false); showCtl(ctlTeach,false);
     legend.style.display="none";
@@ -512,7 +531,7 @@ function todayWeek(){ return Math.floor((Date.now()-ANCHOR_MS)/(7*86400000))+1; 
 function clampWeek(w){ return Math.max(WEEK_MIN, Math.min(WEEK_MAX, w)); }
 function timeRow(g, fcell){
   const tt=g.time.split(" · ");
-  return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td><td>${fcell(g.p1)}</td><td>${fcell(g.p2)}</td></tr>`;
+  return `<tr><td class="time"><b>${tt[0]}</b>${tt[1]||""}</td><td>${fcell(g.p1,0)}</td><td>${fcell(g.p2,1)}</td></tr>`;
 }
 function weekCard(day,date,title,meta,subs,heads,rows){
   return `
@@ -530,7 +549,7 @@ function weekCards(W){
   // Магистратура · модули-интенсивы (8 недель от старта)
   DATA.forEach(m=>{
     const sw=dateToWeek(m.date); if(sw==null || W<sw || W>sw+7) return;
-    const rows=m.grid.filter(g=>g.p1||g.p2).map(g=>timeRow(g,cell)).join("");
+    const rows=m.grid.filter(g=>g.p1||g.p2).map(g=>timeRow(g,(s,i)=>cell(s,resolveAud(s,i?m.aud2:m.aud1)))).join("");
     if(!rows) return;
     const meta=`<span class="chip">Магистратура</span><span class="chip venue">📍 ${m.venue}</span><span class="chip fmt">${m.fmt}</span>`;
     cards.push({off:off(m.day),prog:0,html:weekCard(m.day,fmtDate(weekDate(W,m.day)),m.name,meta,
@@ -734,8 +753,8 @@ function renderMag(){
       const tt=g.time.split(" · ");
       return `<tr>
         <td class="time"><b>${tt[0]}</b>${tt[1]||""}</td>
-        <td${dim1}>${cell(g.p1)}</td>
-        <td${dim2}>${cell(g.p2)}</td>
+        <td${dim1}>${cell(g.p1, resolveAud(g.p1, m.aud1))}</td>
+        <td${dim2}>${cell(g.p2, resolveAud(g.p2, m.aud2))}</td>
       </tr>`;
     }).join("");
     const sw=dateToWeek(m.date);
@@ -785,6 +804,14 @@ document.getElementById("weekBar").addEventListener("click",e=>{
   const b=e.target.closest(".wbtn"); if(!b) return;
   curWeek=+b.dataset.w; renderWeek();
 });
+fCount.innerHTML='<option value="">Не показывать</option><option value="now">Текущая</option>'+
+  (typeof MOVES!=="undefined"?`<option value="moves">С переводами (${MOVES.date})</option>`:"");
+fCount.value=[...fCount.options].some(o=>o.value===countMode)?countMode:""; countMode=fCount.value;
+fCount.addEventListener("change",()=>{
+  countMode=fCount.value;
+  try{ localStorage.setItem("countMode",countMode); }catch(e){}
+  render();
+});
 fLevel.addEventListener("change",switchMode);
 [fDay,fVenue,fTeach,fDisc].forEach(s=>s.addEventListener("change",render));
 render();
@@ -796,7 +823,7 @@ function numOr(v){ return Number.isFinite(v) ? v : null; }
 // сколько студентов у потока, на который указывает элемент .sname
 function studentsOfEl(el){
   if(!el) return null;
-  if(el.dataset.md!==undefined)  return numOr(STUDENTS[el.dataset.md]);
+  if(el.dataset.md!==undefined)  return studCount(el.dataset.md);
   if(el.dataset.sid!==undefined) return numOr(STUDENTS[el.dataset.sid]);
   if(el.dataset.cu!==undefined){
     const c=CUSTOM[el.dataset.cu]; if(!c) return null;
@@ -820,6 +847,15 @@ function studLine(n,note){
   return n===null ? "" :
     `<div class="pl">Студентов: <b>${n}</b>${note?` <span style="color:var(--muted)">· ${note}</span>`:""}</div>`;
 }
+// пояснение к числу студентов в режиме «С переводами»
+function moveNote(s){
+  if(countMode!=="moves") return "";
+  const d=moveDelta(s), p=MOVES.pending[s]||0;
+  const parts=[];
+  if(d) parts.push(`было ${STUDENTS[s]}, переводы ${d>0?"+":""}${d}`);
+  if(p) parts.push(`ещё ${p} — согласовать отдельно`);
+  return parts.length ? parts.join("; ") : "с переводами: без изменений";
+}
 let pinned=false;
 function showPop(el,pin){
   if(el.dataset.md!==undefined){
@@ -827,7 +863,7 @@ function showPop(el,pin){
     pop.innerHTML=`<div class="pf">${prettyName(el.dataset.md)}</div>`+
       `<div class="pl">Поток: <b>${el.dataset.md}</b></div>`+
       (podr?`<div class="pl">Подразделение: <b>${podr}</b></div>`:"")+
-      studLine(studentsOfEl(el));
+      studLine(studentsOfEl(el), moveNote(el.dataset.md));
   } else if(el.dataset.sid!==undefined){
     const s=STREAMS[el.dataset.sid];
     if(!s) return;
