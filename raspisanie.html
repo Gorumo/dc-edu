@@ -852,7 +852,8 @@ function showPop(el,pin){
   } else {
     const p=PEOPLE[el.dataset.tk];
     if(!p) return;
-    pop.innerHTML=`<div class="pf">${p.full}</div><a href="https://t.me/${p.tg}" target="_blank">@${p.tg}</a>`;
+    pop.innerHTML=`<div class="pf">${p.full}</div>`+(p.tg?`<a href="https://t.me/${p.tg}" target="_blank">@${p.tg}</a>`:"")+
+      (p.isu?`<div class="pl">ИСУ: <b>${p.isu}</b></div>`:"");
   }
   const together=el.classList.contains("sname") ? cellStudents(el) : null;
   if(together!==null) pop.innerHTML+=`<div class="pl">Вместе на занятии: <b>${together}</b></div>`;
