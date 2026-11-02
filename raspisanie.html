@@ -806,7 +806,7 @@ document.getElementById("weekBar").addEventListener("click",e=>{
 });
 fCount.innerHTML='<option value="">Не показывать</option><option value="now">Текущая</option>'+
   (typeof MOVES!=="undefined"?`<option value="moves">С переводами (${MOVES.date})</option>`:"");
-fCount.value=[...fCount.options].some(o=>o.value===countMode)?countMode:""; countMode=fCount.value;
+fCount.value=[...fCount.options].some(o=>o.value===countMode)?countMode:(countMode==="moves"?"now":""); countMode=fCount.value;
 fCount.addEventListener("change",()=>{
   countMode=fCount.value;
   try{ localStorage.setItem("countMode",countMode); }catch(e){}
