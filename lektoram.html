@@ -180,10 +180,11 @@ function prettyName(s){
   if(!s) return s;
   let out=s.replace("ИИ-м: НиТ","ИИ Прод").replace("КультИИ:","КультИИ");
   const mod=out.match(/\((?:Мод|Mod) (\d+)\)/), tail=out.match(/(\d+)\.(\d+)\s*$/);
-  if(mod&&tail){ const on=/\bON\b/.test(out)?" Онлайн":""; const head=out.slice(0,out.search(/\((?:Мод|Mod)/)).trim(); out=`${head} ${mod[1]}.${tail[2]}${on}`; }
+  if(mod&&tail){ const on=isOnlineStream(s)?" Онлайн":""; const head=out.slice(0,out.search(/\((?:Мод|Mod)/)).trim(); out=`${head} ${mod[1]}.${tail[2]}${on}`; }
   return out;
 }
 function resolveAud(s, aud){
+  if(isOnlineStream(s)) return "ДИСТ";
   if(!aud || !aud.includes("/")) return aud;
   const parts=aud.split("/").map(x=>x.trim());
   const dist=parts.find(x=>/ДИСТ/i.test(x)), room=parts.find(x=>!/ДИСТ/i.test(x));

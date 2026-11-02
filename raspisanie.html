@@ -204,7 +204,7 @@ function prettyName(s){
   const mod = out.match(/\((?:Мод|Mod) (\d+)\)/);   // номер модуля
   const tail = out.match(/(\d+)\.(\d+)\s*$/);        // хвост вида 1.2
   if(mod && tail){
-    const on = /\bON\b/.test(out) ? " Онлайн" : "";  // сохраняем пометку онлайна
+    const on = isOnlineStream(s) ? " Онлайн" : "";  // сохраняем пометку онлайна
     const head = out.slice(0, out.search(/\((?:Мод|Mod)/)).trim();
     out = `${head} ${mod[1]}.${tail[2]}${on}`;
   }
@@ -288,6 +288,7 @@ const DAY_NICE={"ПОНЕДЕЛЬНИК":"Понедельник","ВТОРНИ�
 const RU_MONTH_NOM=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 // аудитория конкретной пары: у комбинированных колонок «ROOM / ДИСТ» онлайн-пары (ON) → ДИСТ, очные → ROOM
 function resolveAud(s, aud){
+  if(isOnlineStream(s)) return "ДИСТ";
   if(!aud || !aud.includes("/")) return aud;
   const parts=aud.split("/").map(x=>x.trim());
   const dist=parts.find(x=>/ДИСТ/i.test(x));
